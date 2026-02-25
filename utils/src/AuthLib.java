@@ -1,3 +1,70 @@
+import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.*;
+import java.security.spec.X509EncodedKeySpec;
+
 public class AuthLib {
-    
+    final String SIGNATURE_ALGO = "SHA256withRSA";
+
+    /* ===== Diffie–Hellman ===== */
+
+    public static KeyPair generateDHKeyPair() throws Exception {
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("DH");
+        kpg.initialize(2048);
+        
+        return kpg.generateKeyPair();
+    }
+
+    public static byte[] computeSharedSecret(PrivateKey dhPrivateKey, PublicKey peerDhPublicKey) throws Exception {
+        KeyAgreement ka = KeyAgreement.getInstance("DH");
+        ka.init(dhPrivateKey);
+        ka.doPhase(peerDhPublicKey, true);
+        
+        return ka.generateSecret();
+    }
+
+    public static SecretKey deriveHmacKey(byte[] sharedSecret) {
+        return new SecretKeySpec(sharedSecret, 0, 32, "HmacSHA256");
+    }
+
+    /* ===== Authentication ===== 
+
+    // Used only to authenticate DH public keys
+    public static byte[] sign(byte[] data, String privateKeyPath) throws Exception {
+        PrivateKey privKey = RSAKeyGenerator.readPrivateKey(privateKeyPath);
+        Signature sig = Signature.getInstance(SIGNATURE_ALGO);
+        sig.initSign(privKey);
+        sig.update(data);
+        return sig.sign();
+    }
+
+    public static boolean verifySignature(byte[] data, byte[] signature, String publicKeyPath) throws Exception {
+        PublicKey pubKey = RSAKeyGenerator.readPublicKey(publicKeyPath);
+        Signature sig = Signature.getInstance(SIGNATURE_ALGO);
+        sig.initVerify(pubKey);
+        sig.update(data);
+        boolean verified = sig.verify(signature);
+        return verified;
+    }
+    */
+    /* ===== HMAC ===== */
+
+    public static byte[] computeHmac(byte[] data, SecretKey key) throws Exception{
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(key);
+        return mac.doFinal(data);
+
+    }
+
+    public static boolean verifyHmac(byte[] data, byte[] receivedHmac, SecretKey key) throws Exception {
+        byte[] Hmac = computeHmac(data, key);
+        return Hmac.equals(receivedHmac);
+    }
+
+    /* ===== Key decoding ===== */
+
+    public static PublicKey decodeDHPublicKey(byte[] encodedKey) throws Exception {
+            return KeyFactory.getInstance("DH").generatePublic(new X509EncodedKeySpec(encodedKey));
+  
+    }
 }

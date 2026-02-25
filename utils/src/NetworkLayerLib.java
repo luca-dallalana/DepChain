@@ -1,5 +1,4 @@
 import java.io.IOException;
-import static java.lang.Thread.sleep;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -25,7 +24,7 @@ public class NetworkLayerLib {
             socket.send(packet);
             System.out.println("Sent: " + new String(packet.getData(), 0, packet.getLength()));
             try {
-                sleep(2000);
+                Thread.sleep(2000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }

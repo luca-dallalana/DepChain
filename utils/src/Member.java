@@ -1,5 +1,7 @@
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.security.KeyPair;
+
 
 public class Member {
     private static NetworkLayerLib networkLayerLib = new NetworkLayerLib();
@@ -42,6 +44,12 @@ public class Member {
     
     private static void startSender(Integer localPort, String destIP, Integer destPort, String message) throws IOException {
         // Add sequence number (you can modify this to be dynamic)
+    
+        try {KeyPair dhKeyPair = AuthLib.generateDHKeyPair();
+        } catch (Exception e) {
+            System.out.println("Error generating DH key pair: " + e.getMessage());
+            return;
+        }
         int seq = 1;
         String formattedMessage = "SEQ=" + seq + " " + message;
         
