@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.security.KeyPair;
+import java.util.Base64;
 
 
 public class Member {
@@ -44,14 +45,8 @@ public class Member {
     
     private static void startSender(Integer localPort, String destIP, Integer destPort, String message) throws IOException {
         // Add sequence number (you can modify this to be dynamic)
-    
-        try {KeyPair dhKeyPair = AuthLib.generateDHKeyPair();
-        } catch (Exception e) {
-            System.out.println("Error generating DH key pair: " + e.getMessage());
-            return;
-        }
         int seq = 1;
-        String formattedMessage = "SEQ=" + seq + " " + message;
+        String formattedMessage = "SEQ=" + seq + 1 + " " + message;
         
         System.out.println("=== SENDER MODE ===");
         System.out.println("Local port: " + localPort);
@@ -60,17 +55,31 @@ public class Member {
         System.out.println("Sending...");
         
         DatagramSocket sendSocket = new DatagramSocket(localPort);
-        
+        KeyPair dhKeyPair;
+        try {
+            dhKeyPair = AuthLib.generateDHKeyPair();
+        } catch (Exception e) {
+            System.out.println("Error generating DH key pair: " + e.getMessage());
+            return;
+        }
+
         // Start a thread to listen for ACKs
         Thread ackListener = new Thread(() -> {
             try {
-                networkLayerLib.filterReceive(sendSocket);
+                networkLayerLib.filterReceive(sendSocket, dhKeyPair.getPrivate());
             } catch (IOException e) {
                 e.printStackTrace();
             }
         });
         ackListener.start();
         
+        byte[] pubKeyBytes = dhKeyPair.getPublic().getEncoded();
+        String pubKeyB64 = Base64.getEncoder().encodeToString(pubKeyBytes);
+
+        String formattedDH = "SEQ=" + seq + " DH " + pubKeyB64;
+
+        networkLayerLib.alpSend(sendSocket, formattedDH, destIP, destPort, seq);
+
         // Send the message
         networkLayerLib.alpSend(sendSocket, formattedMessage, destIP, destPort, seq);
 

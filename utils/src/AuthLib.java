@@ -1,4 +1,6 @@
 import javax.crypto.*;
+import javax.crypto.interfaces.DHPublicKey;
+import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.*;
 import java.security.spec.X509EncodedKeySpec;
@@ -11,6 +13,15 @@ public class AuthLib {
     public static KeyPair generateDHKeyPair() throws Exception {
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("DH");
         kpg.initialize(2048);
+        
+        return kpg.generateKeyPair();
+    }
+    
+    public static KeyPair generateDHKeyPairReceiver(PublicKey receiverPublicKey) throws Exception {
+        DHParameterSpec params = ((DHPublicKey) receiverPublicKey).getParams();
+
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("DiffieHellman");
+        kpg.initialize(params);
         
         return kpg.generateKeyPair();
     }
