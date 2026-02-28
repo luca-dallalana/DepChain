@@ -1,9 +1,9 @@
 import java.io.IOException;
-import java.net.DatagramSocket;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.Base64;
+import javax.crypto.SecretKey;
 
 
 public class Member implements DeliveryListener {
@@ -75,7 +75,9 @@ public class Member implements DeliveryListener {
         PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
         System.out.println("WILL COMPUTE SHARED SECRET WITH: " + pubKeyB64);
         byte[] sharedSecret = AuthLib.computeSharedSecret(dhKeyPair.getPrivate(), pubkey);
-        System.out.println("---> Shared secret computed: " + Base64.getEncoder().encodeToString(sharedSecret));
+        SecretKey hmacKey = AuthLib.deriveHmacKey(sharedSecret);
+        networkLayerLib.addSharedSecret(1, hmacKey);
+        System.out.println("---> Shared secret derived and stored for sender " + 1);
     }
 
     @Override
@@ -107,16 +109,40 @@ public class Member implements DeliveryListener {
             }
         }
         
-        int seq = 2;
+        int seq = 1;
         String formattedMessage = "SEQ=" + seq + " " + message;
-
+        
+        // FIXME: change this wait logic 
+        SecretKey key = null;
+        int maxWait = 50; 
+        for (int i = 0; i < maxWait; i++) {
+            key = networkLayerLib.getSharedSecret(1);
+            if (key != null) break;
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        
+        String hmac = "";
+        if (key != null) {
+            try {
+                hmac = AuthLib.computeHmac(formattedMessage.getBytes(), key);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else {
+            System.out.println("Warning: shared secret not available, sending without HMAC");
+        }
+        String finalMessage = formattedMessage + " HMAC=" + hmac;
         System.out.println("=== SENDER MODE ===");
         System.out.println("Local port: " + localPort);
         System.out.println("Destination: " + destIP + ":" + destPort);
         System.out.println("Message: " + formattedMessage);
         System.out.println("Sending...");
 
-        networkLayerLib.alpSend(formattedMessage, destIP, destPort, seq);
+        networkLayerLib.alpSend(finalMessage, destIP, destPort, seq);
 
         System.out.println("### Sender finished. ###");
     }

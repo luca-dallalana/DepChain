@@ -1,9 +1,10 @@
+import java.security.*;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
 import javax.crypto.*;
 import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.security.*;
-import java.security.spec.X509EncodedKeySpec;
 
 public class AuthLib {
     final String SIGNATURE_ALGO = "SHA256withRSA";
@@ -60,16 +61,17 @@ public class AuthLib {
     */
     /* ===== HMAC ===== */
 
-    public static byte[] computeHmac(byte[] data, SecretKey key) throws Exception{
+    public static String computeHmac(byte[] data, SecretKey key) throws Exception{
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(key);
-        return mac.doFinal(data);
-
+        byte[] hmac = mac.doFinal(data);
+        return Base64.getEncoder().encodeToString(hmac);
     }
 
     public static boolean verifyHmac(byte[] data, byte[] receivedHmac, SecretKey key) throws Exception {
-        byte[] Hmac = computeHmac(data, key);
-        return Hmac.equals(receivedHmac);
+        String hmac = computeHmac(data, key);
+        String receivedHmacStr = Base64.getEncoder().encodeToString(receivedHmac);
+        return hmac.equals(receivedHmacStr);
     }
 
     /* ===== Key decoding ===== */
