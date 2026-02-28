@@ -75,44 +75,39 @@ public class NetworkLayerLib implements ReceiverListener {
     public void alpDeliver(DatagramPacket packet) throws IOException {
         String message = new String(packet.getData(), 0, packet.getLength());
         System.out.println("Delivering message: " + message);
-        
-        if(message.startsWith("DH REQ=")){ //use else if ?
-            System.out.println("Received DH request message: " + message);
-            //authenticate DH message here
+
+        String prefix = message.split("=")[0];
+
+        switch (prefix) {
+            case "DH REQ":
+                System.out.println("Received DH request message: " + message);
+                try {
+                    sendDHResponse(packet);
+                } catch (Exception e) {
+                    System.out.println("Error generating shared secret: " + e.getMessage());
+                }
+                break;
+            case "DH RESP":
+                System.out.println("Received DH response message: " + message);
+                receivedAck.put(1, true); //FIXME is it a problem to be hardcoded ?
+                listener.onDeliver(0, message);
+                break;
+            case "ACK":
+                System.out.println("Received ACK: " + message);
+                int seqAck = Integer.parseInt(message.substring(4));
+                receivedAck.put(seqAck, true);
+                break;
+            case "SEQ":
+                System.out.println("Received SEQ: " + message);
+                int seq = Integer.parseInt(message.substring(4).split(" ")[0]);
+                sendAck(packet, seq);
+                break;
+            default:
+                //check auth
+                // missing dup logic and out of order logic
+                // MAYBE ADD DUP ACK CHECK HERE
+                break;
         }
-
-        if(message.startsWith("DH RESP=")){
-            System.out.println("Received DH response message: " + message);
-            try {
-                sendDHResponse(packet);
-            } catch (Exception e) {
-                System.out.println("Error generating shared secret: " + e.getMessage());
-            }
-            
-            return;
-        }
-
-        if(message.startsWith("ACK=")){
-            System.out.println("Received ACK: " + message);
-            int seq = Integer.parseInt(message.substring(4).split(" ")[0]);
-            receivedAck.put(seq, true);
-            return;
-        }
-
-        if(message.startsWith("SEQ=")){
-            System.out.println("Received SEQ: " + message);
-            int seq = Integer.parseInt(message.substring(4).split(" ")[0]);
-
-            sendAck(packet, seq);
-            return;
-        }
-        //check if it's an ACK
-        //check auth
-        // missing dup logic and out of order logic
-        // MAYBE ADD DUP ACK CHECK HERE
-
-        listener.onDeliver(0, message); // MISSING senderId EXTRACTION
-            
     }
 
     public void sendAck(DatagramPacket packet, Integer seq) throws IOException {
@@ -120,7 +115,7 @@ public class NetworkLayerLib implements ReceiverListener {
         byte[] data = ackMsg.getBytes();
         InetAddress address = packet.getAddress();
         int port = packet.getPort();
-        DatagramPacket ackPacket = new DatagramPacket(data, data.length, address, port);
+        DatagramPacket ackPacket = new DatagramPacket(data, data.length, address, 3002);//FIXME HARDCODED PORT for testing
         socket.send(ackPacket);
         System.out.println("Sent ACK: " + ackMsg);
     }
@@ -133,10 +128,10 @@ public class NetworkLayerLib implements ReceiverListener {
         PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
         KeyPair keys = AuthLib.generateDHKeyPairReceiver(pubkey);
         String myPubKeyB64 = Base64.getEncoder().encodeToString(keys.getPublic().getEncoded());
-        String DHresponse= "DH RESP=" + myPubKeyB64;
+        String DHresponse= "DH RESP= " + myPubKeyB64;
         byte[] sharedSecret = AuthLib.computeSharedSecret(keys.getPrivate(), pubkey);
         System.out.println("---> Shared secret computed: " + Base64.getEncoder().encodeToString(sharedSecret));
-        DatagramPacket DHresponsePacket = new DatagramPacket(DHresponse.getBytes(), DHresponse.getBytes().length, packet.getAddress(), packet.getPort());
+        DatagramPacket DHresponsePacket = new DatagramPacket(DHresponse.getBytes(), DHresponse.getBytes().length, packet.getAddress(), 3002);//FIXME HARDCODED PORT for testing
         socket.send(DHresponsePacket);
         listener.onDeliver(0, Base64.getEncoder().encodeToString(sharedSecret)); //FIXME MISSING senderId EXTRACTION and also this to string is wrong maybe
     }

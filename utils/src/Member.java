@@ -43,7 +43,7 @@ public class Member implements DeliveryListener {
                 return;
             }
 
-            //member.startDH(destIP, destPort, 1); // Generate and send DH key first
+            member.startDH(destIP, destPort, 1); // Generate and send DH key first
 
             member.start(localPort, destIP, destPort, message, false);
         } else {
@@ -83,7 +83,7 @@ public class Member implements DeliveryListener {
         //FIXME missing logic
         System.out.println("Member received message from sender " + senderId + ": " + message);
         if (message.startsWith("DH RESP=")) {
-            System.out.println("Received DH response message: " + message);
+            System.out.println("Member Received DH response message: " + message);
             try {
                 generateSharedSecret(message);
             } catch (Exception e) {
