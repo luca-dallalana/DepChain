@@ -23,7 +23,7 @@ public class NodeTree {
 
     // Store a node in the tree
     public void storeNode(Node node) throws Exception {
-        String nodeHash = CryptoLib.hashToString(CryptoLib.hashNode(node));
+        String nodeHash = CryptoLib.hashToString(node.depHash());
         nodeStore.put(nodeHash, node);
     }
 
@@ -32,13 +32,18 @@ public class NodeTree {
         return nodeStore.get(CryptoLib.hashToString(hash));
     }
 
+    // Get the first node
+    public Node getFirstNode() {
+        return firstNode;
+    }
+
     // Check if descendant extends from ancestor in the tree
     public boolean extendsFrom(Node descendant, Node ancestor) {
         try {
             if (descendant == null || ancestor == null) {
                 return false;
             }
-            byte[] ancestorHash = CryptoLib.hashNode(ancestor);
+            byte[] ancestorHash = ancestor.depHash();
 
             // Traverse up the tree from descendant
             Node current = descendant;
@@ -51,7 +56,7 @@ public class NodeTree {
                 }
 
                 // Check if parent matches ancestor
-                byte[] parentHash = CryptoLib.hashNode(parent);
+                byte[] parentHash = parent.depHash();
                 if (Arrays.equals(parentHash, ancestorHash)) {
                     return true;
                 }
