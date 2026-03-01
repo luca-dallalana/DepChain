@@ -4,6 +4,7 @@
 *.properties
 *.lst
 *.exe
+.vscode/
 
 **/target/
 *.sh

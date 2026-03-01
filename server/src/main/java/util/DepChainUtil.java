@@ -3,7 +3,7 @@ import model.Message;
 import model.Node;
 import model.QC;
 
-public class HotStuffUtil {
+public class DepChainUtil {
     /*
     Node createLeaf(Node parent, String cmd) {
         Node b = new Node();

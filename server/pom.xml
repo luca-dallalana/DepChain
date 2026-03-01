@@ -10,7 +10,12 @@
     <artifactId>server</artifactId>
     <packaging>jar</packaging>
     <dependencies>
-        <!-- Add shared dependencies here if needed -->
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>utils</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <!-- other dependencies -->
     </dependencies>
     <build>
         <sourceDirectory>src/main/java</sourceDirectory>
