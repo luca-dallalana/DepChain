@@ -5,6 +5,11 @@ import java.security.PublicKey;
 import java.util.Base64;
 import javax.crypto.SecretKey;
 
+import network.DeliveryListener;
+import network.NetworkLayerLib;
+import network.UdpReceiver;
+import crypto.CryptoLib;
+
 
 public class Member implements DeliveryListener {
     private NetworkLayerLib networkLayerLib;
@@ -54,7 +59,7 @@ public class Member implements DeliveryListener {
 
     private boolean startDH(String destIP, Integer destPort, Integer seq) throws IOException {
         try {
-            dhKeyPair = AuthLib.generateDHKeyPair();
+            dhKeyPair = CryptoLib.generateDHKeyPair();
         } catch (Exception e) {
             System.out.println("Error generating DH key pair: " + e.getMessage());
             return false;
@@ -74,8 +79,8 @@ public class Member implements DeliveryListener {
         byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
         PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
         System.out.println("WILL COMPUTE SHARED SECRET WITH: " + pubKeyB64);
-        byte[] sharedSecret = AuthLib.computeSharedSecret(dhKeyPair.getPrivate(), pubkey);
-        SecretKey hmacKey = AuthLib.deriveHmacKey(sharedSecret);
+        byte[] sharedSecret = CryptoLib.computeSharedSecret(dhKeyPair.getPrivate(), pubkey);
+        SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
         networkLayerLib.addSharedSecret(1, hmacKey);
         System.out.println("---> Shared secret derived and stored for sender " + 1);
     }
@@ -128,7 +133,7 @@ public class Member implements DeliveryListener {
         String hmac = "";
         if (key != null) {
             try {
-                hmac = AuthLib.computeHmac(formattedMessage.getBytes(), key);
+                hmac = CryptoLib.computeHmac(formattedMessage.getBytes(), key);
             } catch (Exception e) {
                 e.printStackTrace();
             }

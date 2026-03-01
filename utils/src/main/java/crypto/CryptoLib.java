@@ -1,3 +1,4 @@
+package crypto;
 import java.security.*;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
@@ -6,7 +7,7 @@ import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-public class AuthLib {
+public class CryptoLib {
     final String SIGNATURE_ALGO = "SHA256withRSA";
 
     /* ===== Diffie–Hellman ===== */

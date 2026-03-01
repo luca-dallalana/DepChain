@@ -1,3 +1,5 @@
+package network;
+
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -9,6 +11,7 @@ import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.crypto.SecretKey;
+import crypto.CryptoLib;
 
 
 public class NetworkLayerLib implements ReceiverListener {
@@ -42,7 +45,7 @@ public class NetworkLayerLib implements ReceiverListener {
         SecretKey key = sharedSecrets.get(1);
 
         try {
-            boolean ok = AuthLib.verifyHmac(payload.getBytes(), Base64.getDecoder().decode(hmacStr), key);
+            boolean ok = CryptoLib.verifyHmac(payload.getBytes(), Base64.getDecoder().decode(hmacStr), key);
             if (!ok) {
                 System.out.println("HMAC check failed for message: " + message);
                 return null;
@@ -172,11 +175,11 @@ public class NetworkLayerLib implements ReceiverListener {
         byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
         KeyFactory kf = KeyFactory.getInstance("DiffieHellman");
         PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
-        KeyPair keys = AuthLib.generateDHKeyPairReceiver(pubkey);
+        KeyPair keys = CryptoLib.generateDHKeyPairReceiver(pubkey);
         String myPubKeyB64 = Base64.getEncoder().encodeToString(keys.getPublic().getEncoded());
         String DHresponse= "DH RESP= " + myPubKeyB64;
-        byte[] sharedSecret = AuthLib.computeSharedSecret(keys.getPrivate(), pubkey);
-        SecretKey hmacKey = AuthLib.deriveHmacKey(sharedSecret);
+        byte[] sharedSecret = CryptoLib.computeSharedSecret(keys.getPrivate(), pubkey);
+        SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
         sharedSecrets.put(1, hmacKey);  // FIXME hardcoded senderId for testing
         System.out.println("---> Shared secret derived and stored for sender 1");
         DatagramPacket DHresponsePacket = new DatagramPacket(DHresponse.getBytes(), DHresponse.getBytes().length, packet.getAddress(), 3002);//FIXME HARDCODED PORT for testing
