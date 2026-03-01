@@ -4,14 +4,6 @@ import model.Node;
 import model.QC;
 
 public class DepChainUtil {
-    /*
-    Node createLeaf(Node parent, String cmd) {
-        Node b = new Node();
-        b.parentHash = hash(parent);
-        b.cmd = cmd;
-        return b;
-    }
-    */
     public Message Msg(String type, int viewNumber, Node node, QC justify) {
         Message m = new Message();
         m.type = type;

@@ -6,6 +6,10 @@ import javax.crypto.*;
 import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayOutputStream;
+import model.Node;
 
 public class CryptoLib {
     final String SIGNATURE_ALGO = "SHA256withRSA";
@@ -79,6 +83,26 @@ public class CryptoLib {
 
     public static PublicKey decodeDHPublicKey(byte[] encodedKey) throws Exception {
             return KeyFactory.getInstance("DH").generatePublic(new X509EncodedKeySpec(encodedKey));
-  
+
+    }
+
+    /* ===== Node Hashing ===== */
+
+    public static byte[] hashNode(Node node) throws Exception { //FIXME: Nos devias adicionar viewNumber e QC aos hashes 
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+        // Hash: parentHash + cmd + height
+        if (node.parentHash != null) {
+            baos.write(node.parentHash);
+        }
+        baos.write(node.cmd.getBytes(StandardCharsets.UTF_8));
+        baos.write(ByteBuffer.allocate(4).putInt(node.height).array());
+
+        return digest.digest(baos.toByteArray());
+    }
+
+    public static String hashToString(byte[] hash) {
+        return Base64.getEncoder().encodeToString(hash);
     }
 }
