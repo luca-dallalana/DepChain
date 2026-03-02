@@ -1,5 +1,7 @@
 package member;
 
+import config.MemberConfig;
+import config.ReplicaInfo;
 import model.Node;
 import model.NodeTree;
 import model.QC;
@@ -10,22 +12,24 @@ import network.UdpReceiver;
 
 public class DepChainMember implements DeliveryListener{
     private NetworkLayerLib networkLayerLib;
-    private UdpReceiver receiver;
     private int curView;          // current view number
     private QC lockedQC;         // the highest QC for which this replica voted "commit"
     private QC prepareQC;        // the highest QC for which this replica voted "pre-commit"
 
     private NodeTree nodeTree;
 
-    public DepChainMember(int localPort, int listenerPort) { //FIXME let the config do this only send the lib even the receiver is not needed
-        this.networkLayerLib = new NetworkLayerLib(this, localPort);
-        this.receiver = new UdpReceiver(listenerPort, networkLayerLib);
-        new Thread(receiver).start();
+    private final MemberConfig memberConfig; // All replica information
 
+    public DepChainMember(MemberConfig memberConfig) {
+        this.memberConfig = memberConfig;
+
+        // Initialize consensus state
         this.nodeTree = new NodeTree();
+        this.curView = 0;
         this.lockedQC = null;
         this.prepareQC = null;
     }
+
 
     public boolean safeNode(Node node, QC qc) {
         if (lockedQC == null) {
@@ -33,6 +37,10 @@ public class DepChainMember implements DeliveryListener{
         }
         // Safety (Extends from lockedQC.node) Liveness (QC has higher view than locked QC)
         return nodeTree.extendsFrom(node, lockedQC.node) || qc.viewNumber > lockedQC.viewNumber;
+    }
+
+    public void setNetworkLayerLib(NetworkLayerLib networkLayerLib) {
+        this.networkLayerLib = networkLayerLib;
     }
 
     @Override
