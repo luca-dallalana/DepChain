@@ -1,26 +1,20 @@
 package config;
 
 import java.security.PublicKey;
-import java.util.*;
+import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
-import member.DepChainMember;
-import network.NetworkLayerLib;
-import network.UdpReceiver;
 
 public class MemberConfig {
     private final int ID;               // This replica's ID 
-    private final int localPort;             // Listening port of this replica
     private final PublicKey publicKey;  // For threshold signature verification (nullable for now)
     private final int N;                                    // Total number of replicas
     private final int F;                                    // Byzantine fault tolerance
-    private UdpReceiver receiver;
     private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>();      
 
-    public MemberConfig(int N, int thisID, int port, PublicKey publicKey) {
+    public MemberConfig(int N, int thisID, PublicKey publicKey) {
         this.N = N;
         this.F = (N - 1) / 3; 
         this.ID = thisID;
-        this.localPort = port;
         this.publicKey = publicKey;  
 
         // Validate Byzantine fault tolerance: n = 3f + 1
@@ -33,14 +27,7 @@ public class MemberConfig {
 
         fillReplicasInfo();
 
-        DepChainMember member = new DepChainMember(this);
-
-        NetworkLayerLib networkLayerLib = new NetworkLayerLib(member, localPort);
-        member.setNetworkLayerLib(networkLayerLib);
-
-        this.receiver = new UdpReceiver(3000 + ID, networkLayerLib);
-        new Thread(receiver).start();
-
+      
     }
 
     // Leader election: round-robin based on view number
@@ -49,8 +36,8 @@ public class MemberConfig {
     }
 
     // Check if a replica ID is the current leader
-    public boolean isLeader(int replicaId, int viewNumber) {
-        return getLeader(viewNumber) == replicaId;
+    public boolean isLeader(int viewNumber) {
+        return getLeader(viewNumber) == ID;
     }
 
     // Get replica information by ID
