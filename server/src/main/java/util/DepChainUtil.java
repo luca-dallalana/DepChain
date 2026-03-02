@@ -4,23 +4,23 @@ import model.Node;
 import model.QC;
 
 public class DepChainUtil {
-    public Message Msg(String type, int viewNumber, Node node, QC justify) {
+    public static Message Msg(String type, Node node, QC qc ,int viewNumber) {
         Message m = new Message();
         m.type = type;
         m.viewNumber = viewNumber;
         m.node = node;
-        m.justify = justify;
+        m.justify = qc;
         return m;
     }
 
-    public Message voteMsg(String type, int viewNumber, Node node) {
-        Message m = Msg(type, viewNumber, node, null);
+    public static Message voteMsg(String type, Node node, QC qc, int viewNumber) {
+        Message m = Msg(type, node, qc, viewNumber);
         //m.partialSig = Crypto.tsign(id, Crypto.hash(type, m.viewNumber, node.hash()));
         return m;
     }
 
-    public boolean matchingMsg(Message m, String type, int viewNumer){
-        return m.type.equals(type) && m.viewNumber == viewNumer;
+    public boolean matchingMsg(Message m, String type, int viewNumber){
+        return m.type.equals(type) && m.viewNumber == viewNumber;
     }
 
     public boolean matchingQC(QC qc, String type, int viewNumber) {
