@@ -6,35 +6,30 @@ public class UdpReceiver implements Runnable{
 
     private static final int MAX_PACKET_SIZE = 2048;
 
-    private final int port;
+    private DatagramSocket socket;
     private ReceiverListener listener;
 
-
-    public UdpReceiver(int port, ReceiverListener listener) {
-        this.port = port;
+    public UdpReceiver(DatagramSocket socket, ReceiverListener listener) {
+        this.socket = socket;
         this.listener = listener;
     }
 
-    public void run() { //FIXME maybe send socket as parameter and close it in member
-        try (DatagramSocket socket = new DatagramSocket(port)) {
+    public void run() {
+        System.out.println("UdpReceiver listening on port " + socket.getLocalPort());
 
-            System.out.println("UdpReceiver listening on port " + port);
-
-            while (!socket.isClosed()) {
-                byte[] buffer = new byte[MAX_PACKET_SIZE];
-                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-
+        while (!socket.isClosed()) {
+            byte[] buffer = new byte[MAX_PACKET_SIZE];
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+            try {
                 socket.receive(packet);
-
-                String msg = new String(packet.getData(), 0, packet.getLength());
-                System.out.println("UdpReceiver Received: " + msg);
-
-                listener.onReceive(packet);
+            } catch (Exception e){
+                e.printStackTrace();
+                break;
             }
+            String msg = new String(packet.getData(), 0, packet.getLength());
+            System.out.println("UdpReceiver Received: " + msg);
 
-        } catch (Exception e) {
-            e.printStackTrace();
+            listener.onReceive(packet);
         }
     }
-
 }

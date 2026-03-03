@@ -1,5 +1,7 @@
 package member;
 
+import java.net.DatagramSocket;
+
 import com.google.gson.Gson;
 
 import config.MemberConfig;
@@ -22,6 +24,7 @@ public class DepChainMember implements DeliveryListener{
     private QC lockedQC;         // the highest QC for which this replica voted "commit"
     private QC prepareQC;        // the highest QC for which this replica voted "pre-commit"
 
+    private DatagramSocket socket;
     private UdpReceiver receiver;
     private NodeTree nodeTree;
 
@@ -37,15 +40,16 @@ public class DepChainMember implements DeliveryListener{
 
     private Message[] newViewLog;
 
-    public DepChainMember(MemberConfig memberConfig, int localPort) {
+    public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
         this.memberConfig = memberConfig;
+        this.socket = socket;
 
         // Initialize consensus state
         this.nodeTree = new NodeTree();
         this.curView = 0;
         this.lockedQC = null;
         this.prepareQC = null;
-        this.networkLayerLib = new NetworkLayerLib(this, localPort);
+        this.networkLayerLib = new NetworkLayerLib(this, socket);
 
         // Initialize QC management
         this.qcManager = new QCManager(memberConfig);
@@ -134,20 +138,19 @@ public class DepChainMember implements DeliveryListener{
         prepareCount = 0;
         preCommitCount = 0;
         commitCount = 0;
-        this.receiver = new UdpReceiver(3000 + memberConfig.getID(), networkLayerLib);
+        this.receiver = new UdpReceiver(socket, networkLayerLib);
         new Thread(receiver).start();
     }
 
     // FIXME: need to extend logic
-    private void sendMessage(Message m, String destIp, int destPort, int seq) throws java.io.IOException {
+    private void sendMessage(Message m, String destIp, int destPort) throws java.io.IOException {
         String json = GsonUtils.GSON.toJson(m);
-        String packet = "SEQ=" + seq + " " + json;
-        networkLayerLib.alpSend(packet, destIp, destPort, seq);
+        networkLayerLib.alpSend(json, destIp, destPort);
     }
 
-    private void broadcast(Message m, int seq) throws java.io.IOException {
+    private void broadcast(Message m) throws java.io.IOException {
         for (ReplicaInfo replica : memberConfig.getAllReplicas()) {
-            sendMessage(m, replica.getIP(), replica.getPort(), seq);
+            sendMessage(m, replica.getIP(), replica.getPort());
         }
     }
 
@@ -195,7 +198,7 @@ public class DepChainMember implements DeliveryListener{
             Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, maxQC, curView);
             prepareMsg.senderId = memberConfig.getID();
 
-            broadcast(prepareMsg, 0);
+            broadcast(prepareMsg);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -216,7 +219,7 @@ public class DepChainMember implements DeliveryListener{
 
                 int leader = memberConfig.getLeader(curView);
                 ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
-                sendMessage(voteMsg, replica.getIP(), replica.getPort(), 0);
+                sendMessage(voteMsg, replica.getIP(), replica.getPort());
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -230,7 +233,7 @@ public class DepChainMember implements DeliveryListener{
             Message preCommitMsg = DepChainUtil.Msg("pre-commit", currentProposal, prepareQC, curView);
             preCommitMsg.senderId = memberConfig.getID();
 
-            broadcast(preCommitMsg, 0);
+            broadcast(preCommitMsg);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -251,7 +254,7 @@ public class DepChainMember implements DeliveryListener{
 
             int leader = memberConfig.getLeader(curView);
             ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
-            sendMessage(voteMsg, replica.getIP(), replica.getPort(), 0);
+            sendMessage(voteMsg, replica.getIP(), replica.getPort());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -264,7 +267,7 @@ public class DepChainMember implements DeliveryListener{
             Message commitMsg = DepChainUtil.Msg("commit", currentProposal, precommitQC, curView);
             commitMsg.senderId = memberConfig.getID();
 
-            broadcast(commitMsg, 0);
+            broadcast(commitMsg);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -287,7 +290,7 @@ public class DepChainMember implements DeliveryListener{
 
             int leader = memberConfig.getLeader(curView);
             ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
-            sendMessage(voteMsg, replica.getIP(), replica.getPort(), 0);
+            sendMessage(voteMsg, replica.getIP(), replica.getPort());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -300,7 +303,7 @@ public class DepChainMember implements DeliveryListener{
             Message decideMsg = DepChainUtil.Msg("decide", currentProposal, commitQC, curView);
             decideMsg.senderId = memberConfig.getID();
 
-            broadcast(decideMsg, 0);
+            broadcast(decideMsg);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -321,18 +324,5 @@ public class DepChainMember implements DeliveryListener{
         }
         return maxqc;
     }
-    /* 
-            Message m = receiveMessage();
-        if (matchingMsg(m, "new-view", curView)) {
-            handleNewView(m);
-        } else if (matchingMsg(m, "prepare", curView)) {
-            handlePrepare(m);
-        } else if (matchingMsg(m, "pre-commit", curView)) {
-            handlePreCommit(m);
-        } else if (matchingMsg(m, "commit", curView)) {
-            handleCommit(m);
-        } else if (matchingMsg(m, "decide", curView)) {
-            handleDecide(m);
-        }
-            */
+    
 }

@@ -16,21 +16,23 @@ import crypto.CryptoLib;
 
 public class NetworkLayerLib implements ReceiverListener {
 
+    private int seq;
+    private KeyPair dhKeyPair;
     private DeliveryListener listener;
     private DatagramSocket socket;
 
     private ConcurrentHashMap<Integer, Boolean> receivedAck = new ConcurrentHashMap<>();
     private ConcurrentHashMap<Integer, String> outOfOrderMessages = new ConcurrentHashMap<>(); 
     private AtomicInteger nextExpectedSeq = new AtomicInteger(1); // Prevents concurrent access 
-    private ConcurrentHashMap<Integer, SecretKey> sharedSecrets = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<Integer, SecretKey> sharedSecrets = new ConcurrentHashMap<>(); // Maps ports -> shared secrets
 
-
-    
-    public NetworkLayerLib(DeliveryListener listener, int port){
+    public NetworkLayerLib(DeliveryListener listener, DatagramSocket socket){
+        this.seq = 0;
         this.listener = listener;
+        this.socket = socket;
         try {
-            this.socket = new DatagramSocket(port);
-        } catch (IOException e) {
+            dhKeyPair = CryptoLib.generateDHKeyPair();
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -58,15 +60,30 @@ public class NetworkLayerLib implements ReceiverListener {
     }
 
     // Authenticated perfect links using SLs
-    public void alpSend(String m, String dest, Integer port, Integer seq) throws IOException {
-        byte[] data = m.getBytes();
+    public void alpSend(String m, String dest, Integer port) throws IOException {
+        seq++;
+        if (!sharedSecrets.containsKey(port)) {
+            handleDH(seq, port);
+        }
+
+        String msg = "SEQ=" + seq + " " + m;
+        SecretKey key = sharedSecrets.get(port);
+        
+        try {
+            String hmac = CryptoLib.computeHmac(msg.getBytes(), key);
+            msg += " HMAC=" + hmac;
+        } catch (Exception e) {
+            System.out.println("Error computing HMAC: " + e.getMessage());
+            return;
+        }
+
+        byte[] data = msg.getBytes();
         InetAddress address = InetAddress.getByName(dest);
         DatagramPacket packet = new DatagramPacket(data, data.length, address, port);
-        // ADD AUTHENTICATION HERE
         
         new Thread(() -> {
             try {
-                slSend(packet, seq);
+                slSend(packet);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -75,7 +92,7 @@ public class NetworkLayerLib implements ReceiverListener {
     }
 
     // Stubborn Links
-    public void slSend(DatagramPacket packet, Integer seq) throws IOException {
+    public void slSend(DatagramPacket packet) throws IOException {
         while (true) {
             socket.send(packet);
             System.out.println("Sent: " + new String(packet.getData(), 0, packet.getLength()));
@@ -118,10 +135,11 @@ public class NetworkLayerLib implements ReceiverListener {
                     System.out.println("Error generating shared secret: " + e.getMessage());
                 }
                 break;
-            case "DH RESP":
+            case "DH RESP": //FIXME check if i recived this
                 System.out.println("Received DH response message: " + message);
-                receivedAck.put(1, true); //FIXME is it a problem to be hardcoded ?
-                listener.onDeliver(0, message);
+                receivedAck.put(packet.getPort(), true); //FIXME this is wrong
+                int port = packet.getPort();
+                generateSharedSecret(message, port);
                 break;
             case "ACK":
                 System.out.println("Received ACK: " + message);
@@ -140,12 +158,12 @@ public class NetworkLayerLib implements ReceiverListener {
                 sendAck(packet, seq);
                 
                 if (seq == nextExpectedSeq.get()) {
-                    listener.onDeliver(seq, strippedSeq);
+                    listener.onDeliver(packet.getPort() - 3000, strippedSeq);
                     nextExpectedSeq.incrementAndGet();
                     // Check if we can delivered stored out of order messages
                     while (outOfOrderMessages.containsKey(nextExpectedSeq.get())) {
                         String storedMsg = outOfOrderMessages.remove(nextExpectedSeq.get());
-                        listener.onDeliver(nextExpectedSeq.get(), storedMsg);
+                        listener.onDeliver(packet.getPort() - 3000, storedMsg);
                         nextExpectedSeq.incrementAndGet();
                     }
                 } else {
@@ -164,7 +182,7 @@ public class NetworkLayerLib implements ReceiverListener {
         byte[] data = ackMsg.getBytes();
         InetAddress address = packet.getAddress();
         int port = packet.getPort();
-        DatagramPacket ackPacket = new DatagramPacket(data, data.length, address, 3002);//FIXME HARDCODED PORT for testing
+        DatagramPacket ackPacket = new DatagramPacket(data, data.length, address, port);//FIXME HARDCODED PORT for testing
         socket.send(ackPacket);
         System.out.println("Sent ACK: " + ackMsg);
     }
@@ -180,11 +198,46 @@ public class NetworkLayerLib implements ReceiverListener {
         String DHresponse= "DH RESP= " + myPubKeyB64;
         byte[] sharedSecret = CryptoLib.computeSharedSecret(keys.getPrivate(), pubkey);
         SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
-        sharedSecrets.put(1, hmacKey);  // FIXME hardcoded senderId for testing
-        System.out.println("---> Shared secret derived and stored for sender 1");
-        DatagramPacket DHresponsePacket = new DatagramPacket(DHresponse.getBytes(), DHresponse.getBytes().length, packet.getAddress(), 3002);//FIXME HARDCODED PORT for testing
+        sharedSecrets.put(packet.getPort(), hmacKey);
+        System.out.println("---> Shared secret derived and stored for sender " + packet.getPort());
+        DatagramPacket DHresponsePacket = new DatagramPacket(DHresponse.getBytes(), DHresponse.getBytes().length, packet.getAddress(), packet.getPort());
         socket.send(DHresponsePacket);
-        listener.onDeliver(0, Base64.getEncoder().encodeToString(sharedSecret)); //FIXME MISSING senderId EXTRACTION and also this to string is wrong maybe
+    }
+
+    public void handleDH(int destPort, int port) {
+        byte[] pubKeyBytes = dhKeyPair.getPublic().getEncoded();
+        String pubKeyB64 = Base64.getEncoder().encodeToString(pubKeyBytes);
+        String DHrequest = "DH REQ= " + pubKeyB64;
+        try {
+            alpSend(pubKeyB64, DHrequest, destPort);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        while (!sharedSecrets.containsKey(port)) { //FIXME test this
+            System.out.println("Shared secret not yet established for port " + port);
+         
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void generateSharedSecret(String msg, int port) {
+        try {
+            KeyFactory kf = KeyFactory.getInstance("DiffieHellman");
+            String pubKeyB64 = msg.split(" ")[2];
+            byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
+            PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
+            System.out.println("WILL COMPUTE SHARED SECRET WITH: " + pubKeyB64);
+            byte[] sharedSecret = CryptoLib.computeSharedSecret(dhKeyPair.getPrivate(), pubkey);
+            SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
+            addSharedSecret(port, hmacKey);
+            System.out.println("---> Shared secret derived and stored for sender " + port);
+        } catch (Exception e) {
+            System.out.println("Error generating shared secret: " + e.getMessage());
+        }
     }
 
     public void closeSocket() {
