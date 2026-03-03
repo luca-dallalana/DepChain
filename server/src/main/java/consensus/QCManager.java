@@ -1,0 +1,115 @@
+package consensus;
+
+import config.MemberConfig;
+import crypto.CryptoLib;
+import crypto.SignatureService;
+import crypto.SimpleSignatureService;
+import model.Message;
+import model.Node;
+import model.QC;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class QCManager {
+    private final MemberConfig memberConfig;
+    private final SignatureService signatureService;
+
+    // Vote storage: key = "type:viewNumber:nodeHash", value = list of votes
+    private final ConcurrentHashMap<String, List<Message>> voteStore;
+
+    public QCManager(MemberConfig memberConfig) {
+        this.memberConfig = memberConfig;
+        this.signatureService = new SimpleSignatureService();
+        this.voteStore = new ConcurrentHashMap<>();
+    }
+
+    public boolean addVote(Message vote) {
+        try {
+            String key = createVoteKey(vote.type, vote.viewNumber, vote.node);
+            List<Message> votes = voteStore.computeIfAbsent(key, k -> new ArrayList<>());
+
+            // Check for duplicate voter (same senderId)
+            synchronized (votes) {
+                for (Message existing : votes) {
+                    if (existing.senderId == vote.senderId) {
+                        return false;
+                    }
+                }
+                votes.add(vote);
+                return votes.size() >= memberConfig.getQuorumSize();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public QC formQC(String type, int viewNumber, Node node) throws Exception {
+        String key = createVoteKey(type, viewNumber, node);
+        List<Message> votes = voteStore.get(key);
+
+        if (votes == null || votes.size() < memberConfig.getQuorumSize()) {
+            throw new IllegalStateException("Cannot form QC: insufficient votes");
+        }
+
+        // Collect partial signatures
+        List<byte[]> partialSigs = new ArrayList<>();
+        synchronized (votes) {
+            for (Message vote : votes) {
+                if (vote.partialSig != null) {
+                    partialSigs.add(vote.partialSig);
+                }
+            }
+        }
+        byte[] messageHash = computeMessageHash(type, viewNumber, node);
+        byte[] aggregatedSig = signatureService.aggregateSignatures(partialSigs, messageHash);
+        return new QC(type, viewNumber, node, aggregatedSig);
+    }
+
+    public boolean verifyQC(QC qc) {
+        try {
+            if (qc == null) {
+                return false;
+            }
+            byte[] messageHash = computeMessageHash(qc.type, qc.viewNumber, qc.node);
+            return signatureService.verifyAggregatedSignature(
+                qc.sig,
+                messageHash,
+                memberConfig.getQuorumSize()
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public byte[] createPartialSignature(String type, int viewNumber, Node node) throws Exception {
+        byte[] messageHash = computeMessageHash(type, viewNumber, node);
+        return signatureService.createPartialSignature(memberConfig.getID(), messageHash);
+    }
+
+    public void clearVotesForView(int viewNumber) {
+        voteStore.entrySet().removeIf(entry ->
+            entry.getKey().contains(":" + viewNumber + ":")
+        );
+    }
+
+    private String createVoteKey(String type, int viewNumber, Node node) throws Exception {
+        String nodeHash = Arrays.toString(node.depHash());
+        return type + ":" + viewNumber + ":" + nodeHash;
+    }
+
+    private byte[] computeMessageHash(String type, int viewNumber, Node node) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        baos.write(type.getBytes(StandardCharsets.UTF_8));
+        baos.write(ByteBuffer.allocate(4).putInt(viewNumber).array());
+        baos.write(node.depHash());
+        return CryptoLib.hash(baos.toByteArray());
+    }
+}

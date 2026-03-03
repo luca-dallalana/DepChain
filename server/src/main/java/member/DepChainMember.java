@@ -3,6 +3,7 @@ package member;
 import com.google.gson.Gson;
 
 import config.MemberConfig;
+import consensus.QCManager;
 import model.GsonUtils;
 import model.Message;
 import model.Node;
@@ -25,6 +26,9 @@ public class DepChainMember implements DeliveryListener{
     private NodeTree nodeTree;
 
     private final MemberConfig memberConfig; // All replica information
+    private final QCManager qcManager;
+    private final DepChainUtil util;
+    private Node currentProposal; // Track leader's proposal
 
     private int newViewCount;
     private int prepareCount;
@@ -42,6 +46,10 @@ public class DepChainMember implements DeliveryListener{
         this.lockedQC = null;
         this.prepareQC = null;
         this.networkLayerLib = new NetworkLayerLib(this, localPort);
+
+        // Initialize QC management
+        this.qcManager = new QCManager(memberConfig);
+        this.util = new DepChainUtil(qcManager);
 
     }
 
@@ -71,6 +79,7 @@ public class DepChainMember implements DeliveryListener{
         }
         Gson gson = GsonUtils.GSON;
         Message m = gson.fromJson(payload, Message.class);
+        m.senderId = senderId; // Ensure senderId is set
 
         switch (m.type) {
             case "new-view": //FIXME check non-leaders case ???
@@ -83,6 +92,7 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "prepare":
                 if (memberConfig.isLeader(curView)) {
+                    qcManager.addVote(m); // Collect vote
                     if (waitFor(1)) {
                         handlePreCommitLeader();
                     }
@@ -92,6 +102,7 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "pre-commit":
                 if (memberConfig.isLeader(curView)) {
+                    qcManager.addVote(m); // Collect vote
                     if (waitFor(2)) {
                         handleCommitLeader();
                     }
@@ -101,6 +112,7 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "commit":
                 if (memberConfig.isLeader(curView)) {
+                    qcManager.addVote(m); // Collect vote
                     if (waitFor(3)) {
                         handleDecideLeader();
                     }
@@ -131,6 +143,12 @@ public class DepChainMember implements DeliveryListener{
         String json = GsonUtils.GSON.toJson(m);
         String packet = "SEQ=" + seq + " " + json;
         networkLayerLib.alpSend(packet, destIp, destPort, seq);
+    }
+
+    private void broadcast(Message m, int seq) throws java.io.IOException {
+        for (ReplicaInfo replica : memberConfig.getAllReplicas()) {
+            sendMessage(m, replica.getIP(), replica.getPort(), seq);
+        }
     }
 
     private boolean waitFor(int phase) {
@@ -172,10 +190,12 @@ public class DepChainMember implements DeliveryListener{
         QC maxQC = getMaxQC(newViewLog);
         try {
             Node curProposal = Node.createLeaf(maxQC.node, null);//FIXME add user cmd
+            this.currentProposal = curProposal; // Store for QC formation
+
             Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, maxQC, curView);
-            for (ReplicaInfo replica : memberConfig.getAllReplicas()) {
-                sendMessage(prepareMsg, replica.getIP(), replica.getPort(), 0); // FIXME: seq
-            }
+            prepareMsg.senderId = memberConfig.getID();
+
+            broadcast(prepareMsg, 0);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -183,63 +203,107 @@ public class DepChainMember implements DeliveryListener{
 
     
     private void handlePrepareReplica(Message m) {
-        if (safeNode(m.node, m.justify)) {
-            Message prepareMsg = DepChainUtil.voteMsg("prepare", m.node, null, curView); //FIXME is it null ?
-            
-            int leader = memberConfig.getLeader(curView);
-            ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
-            try {
-                sendMessage(prepareMsg, replica.getIP(), replica.getPort(), 0); // FIXME: seq
-            } catch (Exception e) {
-                e.printStackTrace();
+        try {
+            // Verify the justify QC if present
+            if (m.justify != null && !qcManager.verifyQC(m.justify)) {
+                System.err.println("Invalid justify QC in prepare message");
+                return;
             }
+
+            if (safeNode(m.node, m.justify)) {
+                Message voteMsg = util.voteMsg("prepare", m.node, null, curView);
+                voteMsg.senderId = memberConfig.getID();
+
+                int leader = memberConfig.getLeader(curView);
+                ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
+                sendMessage(voteMsg, replica.getIP(), replica.getPort(), 0);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
     
     private void handlePreCommitLeader() {
-        // Combine partial signatures into a prepareQC
-        // Broadcast it Msg("pre-commit", null, prepareQC));
-    }
-
-    private void handlePreCommitReplica(Message m) {
-        prepareQC = m.justify;
-
-        Message prepareMsg = DepChainUtil.voteMsg("prepare", m.justify.node, null, curView); //FIXME is it null ?
-        
-        int leader = memberConfig.getLeader(curView);
-        ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
         try {
-            sendMessage(prepareMsg, replica.getIP(), replica.getPort(), 0); // FIXME: seq
+            QC prepareQC = qcManager.formQC("prepare", curView, currentProposal);
+
+            Message preCommitMsg = DepChainUtil.Msg("pre-commit", currentProposal, prepareQC, curView);
+            preCommitMsg.senderId = memberConfig.getID();
+
+            broadcast(preCommitMsg, 0);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        
+    }
+
+    private void handlePreCommitReplica(Message m) {
+        try {
+            // Verify the prepareQC
+            if (m.justify == null || !qcManager.verifyQC(m.justify)) {
+                System.err.println("Invalid prepareQC in pre-commit message");
+                return;
+            }
+
+            prepareQC = m.justify;
+
+            Message voteMsg = util.voteMsg("pre-commit", m.justify.node, null, curView);
+            voteMsg.senderId = memberConfig.getID();
+
+            int leader = memberConfig.getLeader(curView);
+            ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
+            sendMessage(voteMsg, replica.getIP(), replica.getPort(), 0);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void handleCommitLeader() {
-        //combine partial signatures into a precommitQC
-        //broadcast(Msg("commit", null, precommitQC));
+        try {
+            QC precommitQC = qcManager.formQC("pre-commit", curView, currentProposal);
+
+            Message commitMsg = DepChainUtil.Msg("commit", currentProposal, precommitQC, curView);
+            commitMsg.senderId = memberConfig.getID();
+
+            broadcast(commitMsg, 0);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
   
 
 
     private void handleCommitReplica(Message m) {
-        lockedQC = m.justify;
-
-        Message prepareMsg = DepChainUtil.voteMsg("commit", m.justify.node, null, curView); //FIXME is it null ?
-
-        int leader = memberConfig.getLeader(curView);
-        ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
         try {
-            sendMessage(prepareMsg, replica.getIP(), replica.getPort(), 0); //  FIXME: seq
+            // Verify the precommitQC
+            if (m.justify == null || !qcManager.verifyQC(m.justify)) {
+                System.err.println("Invalid precommitQC in commit message");
+                return;
+            }
+
+            lockedQC = m.justify;
+
+            Message voteMsg = util.voteMsg("commit", m.justify.node, null, curView);
+            voteMsg.senderId = memberConfig.getID();
+
+            int leader = memberConfig.getLeader(curView);
+            ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
+            sendMessage(voteMsg, replica.getIP(), replica.getPort(), 0);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
     private void handleDecideLeader() {
-        //combine partial signatures into a commitQC
-        //broadcast(Msg("commit", null, commitQC));
+        try {
+            QC commitQC = qcManager.formQC("commit", curView, currentProposal);
+
+            Message decideMsg = DepChainUtil.Msg("decide", currentProposal, commitQC, curView);
+            decideMsg.senderId = memberConfig.getID();
+
+            broadcast(decideMsg, 0);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void handleDecideReplica(Message m) {

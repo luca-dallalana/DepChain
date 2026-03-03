@@ -1,9 +1,16 @@
 package util;
+import consensus.QCManager;
 import model.Message;
 import model.Node;
 import model.QC;
 
 public class DepChainUtil {
+    private final QCManager qcManager;
+
+    public DepChainUtil(QCManager qcManager) {
+        this.qcManager = qcManager;
+    }
+
     public static Message Msg(String type, Node node, QC qc ,int viewNumber) {
         Message m = new Message();
         m.type = type;
@@ -13,9 +20,9 @@ public class DepChainUtil {
         return m;
     }
 
-    public static Message voteMsg(String type, Node node, QC qc, int viewNumber) {
+    public Message voteMsg(String type, Node node, QC qc, int viewNumber) throws Exception {
         Message m = Msg(type, node, qc, viewNumber);
-        //m.partialSig = Crypto.tsign(id, Crypto.hash(type, m.viewNumber, node.hash()));
+        m.partialSig = qcManager.createPartialSignature(type, viewNumber, node);
         return m;
     }
 
