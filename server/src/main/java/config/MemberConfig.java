@@ -6,6 +6,7 @@ import threshsig.GroupKey;
 
 import java.security.PublicKey;
 import java.util.Collection;
+import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MemberConfig {
@@ -13,6 +14,7 @@ public class MemberConfig {
     private final int N;                                    // Total number of replicas
     private final int F;                                    // Byzantine fault tolerance
     private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>();
+    private Vector<String> pendingCommands = new Vector<>(); // Commands to be executed
 
     // Threshold signature key material
     private KeyShare keyShare;          // This replica's secret key share
@@ -104,4 +106,15 @@ public class MemberConfig {
         this.groupKey = groupKey;
     }
 
+    public Vector<String> getPendingCommands() {
+        return pendingCommands;
+    }
+
+    public void addPendingCommand(String command) {
+        this.pendingCommands.add(command);
+    }
+
+    public void removePendingCommand(String command) {
+        this.pendingCommands.remove(command);
+    }
 }

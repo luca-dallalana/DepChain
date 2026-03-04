@@ -10,7 +10,9 @@ import java.security.PublicKey;
 import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+
 import javax.crypto.SecretKey;
+
 import crypto.CryptoLib;
 
 
@@ -72,6 +74,7 @@ public class NetworkLayerLib implements ReceiverListener {
 
     // Stubborn Links
     public void slSend(DatagramPacket packet, int seq) throws IOException {
+        socket.send(packet);
         while (receivedAck.get(packet.getPort()) != null && receivedAck.get(packet.getPort()) < seq) {
             socket.send(packet);
             System.out.println("Sent: " + new String(packet.getData(), 0, packet.getLength()));

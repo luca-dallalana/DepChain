@@ -1,10 +1,12 @@
 package member;
 
+import java.io.IOException;
 import java.net.DatagramSocket;
 
 import com.google.gson.Gson;
 
 import config.MemberConfig;
+import config.ReplicaInfo;
 import consensus.QCManager;
 import model.GsonUtils;
 import model.Message;
@@ -15,7 +17,6 @@ import network.DeliveryListener;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
 import util.DepChainUtil;
-import config.ReplicaInfo;
 
 
 public class DepChainMember implements DeliveryListener{
@@ -80,6 +81,13 @@ public class DepChainMember implements DeliveryListener{
             if (idx != -1) {
                 payload = payload.substring(idx + 1);
             }
+        }
+        if (payload.startsWith("NewCommand=")) {
+            String command = payload.substring("NewCommand=".length());
+            System.out.println("Received new command: " + command);
+            memberConfig.addPendingCommand(command);
+            return; 
+            
         }
         Gson gson = GsonUtils.GSON;
         Message m = gson.fromJson(payload, Message.class);
@@ -311,6 +319,14 @@ public class DepChainMember implements DeliveryListener{
 
     private void handleDecideReplica(Message m) {
         //execute the command in m.justify.node
+        System.out.println("Command decided: " + m.justify.node.cmd);
+        memberConfig.removePendingCommand(m.justify.node.cmd);
+        String message = "Decided command= " + m.justify.node.cmd;
+        try {
+            networkLayerLib.alpSend(message, "localhost", 5000); // Send execution result to central server
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private QC getMaxQC(Message[] msgs) { //maybe put this in utils

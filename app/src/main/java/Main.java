@@ -1,12 +1,21 @@
+import java.net.DatagramSocket;
+
 import client.Client;
+
 public class Main {
     
     public static void main(String[] args) {
-        String serverIp = "localhost";
-        int serverPort = 5000;
-        int localPort = 6000;
+        try {
+            String serverIp = "localhost";
+            int serverPort = 5000;
+            int localPort = 6000;
 
-        Client client = new Client(serverIp, serverPort, localPort);
-        client.startCLI();
+            DatagramSocket socket = new DatagramSocket(4004);
+            Client client = new Client(serverIp, serverPort, localPort, socket);
+            client.start();
+        } catch (Exception e) {
+            System.err.println("Failed to start client: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

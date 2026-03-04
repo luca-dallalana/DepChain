@@ -4,6 +4,7 @@ import java.util.Scanner;
 
 import network.DeliveryListener;
 import network.NetworkLayerLib;
+import network.UdpReceiver;
 
 public class Client implements DeliveryListener{
     
@@ -13,16 +14,24 @@ public class Client implements DeliveryListener{
     private DatagramSocket socket;
     private boolean running = true;
     private NetworkLayerLib networkLayerLib;
-    
-    public Client(String serverIp, int serverPort, int localPort) {
+    private UdpReceiver receiver;
+
+
+    public Client(String serverIp, int serverPort, int localPort, DatagramSocket socket) {
         this.serverIp = serverIp;
         this.serverPort = serverPort;
         this.localPort = localPort;
-        this.networkLayerLib = new NetworkLayerLib(this, 4004);
+        this.socket = socket;
+        this.networkLayerLib = new NetworkLayerLib(this, this.socket);
 
     }
-
     
+    public void start() {
+        System.out.println("===== Client STARTED =====");
+        this.receiver = new UdpReceiver(socket, networkLayerLib);
+        new Thread(receiver).start();
+        startCLI();
+    }
     public void startCLI() {
         
         System.out.println("\n=========== Client ==========");
@@ -46,7 +55,7 @@ public class Client implements DeliveryListener{
             } else if (input.startsWith("send ")) {
                 String message = input.substring(5);
                 try {
-                    sendMessage(message, "localhost", this.serverPort, 1); // FIXME: hardcoded seq and ip
+                    sendMessage(message, "localhost", this.serverPort);
                 } catch (Exception e) {
                     System.err.println("Error sending message: " + e.getMessage());
                 }
@@ -57,9 +66,9 @@ public class Client implements DeliveryListener{
         }
         scanner.close();
     }
-    private void sendMessage(String m, String destIp, int destPort, int seq) throws java.io.IOException {
-        String packet = "NewCommand=" + m + " Seq=" + seq;
-        networkLayerLib.alpSend(packet, destIp, destPort, seq);
+    private void sendMessage(String m, String destIp, int destPort) throws java.io.IOException {
+        String packet = "NewCommand=" + m;
+        networkLayerLib.alpSend(packet, destIp, destPort);
     }
     @Override
     public void onDeliver(int senderId, String message) {
