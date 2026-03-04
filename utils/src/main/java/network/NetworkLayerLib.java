@@ -16,18 +16,17 @@ import crypto.CryptoLib;
 
 public class NetworkLayerLib implements ReceiverListener {
 
-    private int seq;
     private KeyPair dhKeyPair;
     private DeliveryListener listener;
     private DatagramSocket socket;
 
-    private ConcurrentHashMap<Integer, Boolean> receivedAck = new ConcurrentHashMap<>();
-    private ConcurrentHashMap<Integer, String> outOfOrderMessages = new ConcurrentHashMap<>(); 
-    private AtomicInteger nextExpectedSeq = new AtomicInteger(1); // Prevents concurrent access 
+    private ConcurrentHashMap<Integer, Integer> sentSeq = new ConcurrentHashMap<>(); // Maps ports -> sequence number
+    private ConcurrentHashMap<Integer, Integer> receivedAck = new ConcurrentHashMap<>(); // Maps ports -> last received seq for ACK
+    private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, String>> outOfOrderMessages = new ConcurrentHashMap<>(); // Maps ports -> (seq -> message)
+    private ConcurrentHashMap<Integer, AtomicInteger> nextExpectedSeq = new ConcurrentHashMap<>(); // Maps ports -> expected seq
     private ConcurrentHashMap<Integer, SecretKey> sharedSecrets = new ConcurrentHashMap<>(); // Maps ports -> shared secrets
 
     public NetworkLayerLib(DeliveryListener listener, DatagramSocket socket){
-        this.seq = 0;
         this.listener = listener;
         this.socket = socket;
         try {
@@ -36,34 +35,14 @@ public class NetworkLayerLib implements ReceiverListener {
             e.printStackTrace();
         }
     }
-    
-    private String verifyAndRemoveHmac(String message) {
-        int idx = message.indexOf(" HMAC=");
-        if (idx == -1) {
-            return message;
-        }
-        String payload = message.substring(0, idx);
-        String hmacStr = message.substring(idx + 6);
-        SecretKey key = sharedSecrets.get(1);
-
-        try {
-            boolean ok = CryptoLib.verifyHmac(payload.getBytes(), Base64.getDecoder().decode(hmacStr), key);
-            if (!ok) {
-                System.out.println("HMAC check failed for message: " + message);
-                return null;
-            }
-        } catch (Exception e) {
-            System.out.println("Error verifying HMAC: " + e.getMessage());
-            return null;
-        }
-        return payload;
-    }
 
     // Authenticated perfect links using SLs
     public void alpSend(String m, String dest, Integer port) throws IOException {
-        seq++;
+        int seq = sentSeq.getOrDefault(port, 0) + 1;
+        sentSeq.put(port, seq);
+
         if (!sharedSecrets.containsKey(port)) {
-            handleDH(seq, port);
+            handleDH(dest, port, seq);
         }
 
         String msg = "SEQ=" + seq + " " + m;
@@ -83,7 +62,7 @@ public class NetworkLayerLib implements ReceiverListener {
         
         new Thread(() -> {
             try {
-                slSend(packet);
+                slSend(packet, seq);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -92,8 +71,8 @@ public class NetworkLayerLib implements ReceiverListener {
     }
 
     // Stubborn Links
-    public void slSend(DatagramPacket packet) throws IOException {
-        while (true) {
+    public void slSend(DatagramPacket packet, int seq) throws IOException {
+        while (receivedAck.get(packet.getPort()) != null && receivedAck.get(packet.getPort()) < seq) {
             socket.send(packet);
             System.out.println("Sent: " + new String(packet.getData(), 0, packet.getLength()));
             try {
@@ -101,12 +80,8 @@ public class NetworkLayerLib implements ReceiverListener {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            if(receivedAck.getOrDefault(seq, false)) {
-                break;
-            }
         }   
     }  
-
 
     @Override
     public void onReceive(DatagramPacket packet) {
@@ -118,8 +93,6 @@ public class NetworkLayerLib implements ReceiverListener {
         }
     }
 
-    // Diogo check here if its DH then we can only use this and create a auth protocol in memeber once they are launched
-
     public void alpDeliver(DatagramPacket packet) throws IOException {
         String message = new String(packet.getData(), 0, packet.getLength());
         System.out.println("Delivering message: " + message);
@@ -129,50 +102,67 @@ public class NetworkLayerLib implements ReceiverListener {
         switch (prefix) {
             case "DH REQ":
                 System.out.println("Received DH request message: " + message);
+                if (sharedSecrets.containsKey(packet.getPort())) {
+                    System.out.println("Shared secret already exists for port " + packet.getPort() + ", ignoring DH request");
+                    return;
+                }
                 try {
                     sendDHResponse(packet);
                 } catch (Exception e) {
                     System.out.println("Error generating shared secret: " + e.getMessage());
                 }
                 break;
-            case "DH RESP": //FIXME check if i recived this
+            case "DH RESP":
+                if (sharedSecrets.containsKey(packet.getPort())) {
+                    System.out.println("Shared secret already exists for port " + packet.getPort() + ", ignoring DH response");
+                    return;
+                }
                 System.out.println("Received DH response message: " + message);
-                receivedAck.put(packet.getPort(), true); //FIXME this is wrong
+                int DHseq = Integer.parseInt(message.split(" ")[4]);
                 int port = packet.getPort();
+                receivedAck.put(port, DHseq);
                 generateSharedSecret(message, port);
                 break;
             case "ACK":
                 System.out.println("Received ACK: " + message);
-                String strippedAck = verifyAndRemoveHmac(message);
+                String strippedAck = verifyAndRemoveHmac(message, packet.getPort());
                 if (strippedAck == null) break;
                 int seqAck = Integer.parseInt(strippedAck.substring(4));
-                if (!receivedAck.containsKey(seqAck)) { // Dup ACK check
-                    receivedAck.put(seqAck, true);
+                if (receivedAck.get(packet.getPort()) == null || receivedAck.get(packet.getPort()) < seqAck) { // Dup ACK check
+                    receivedAck.put(packet.getPort(), seqAck);
                 }
                 break;
             case "SEQ":
                 System.out.println("Received SEQ: " + message);
-                String strippedSeq = verifyAndRemoveHmac(message);
+                String strippedSeq = verifyAndRemoveHmac(message, packet.getPort());
                 if (strippedSeq == null) break;
                 int seq = Integer.parseInt(strippedSeq.substring(4).split(" ")[0]);
                 sendAck(packet, seq);
                 
-                if (seq == nextExpectedSeq.get()) {
+                if (nextExpectedSeq.get(packet.getPort()) == null) {
+                    nextExpectedSeq.put(packet.getPort(), new AtomicInteger(1));
+                }
+
+                if (seq == nextExpectedSeq.get(packet.getPort()).get()) {
                     listener.onDeliver(packet.getPort() - 3000, strippedSeq);
-                    nextExpectedSeq.incrementAndGet();
+                    nextExpectedSeq.get(packet.getPort()).incrementAndGet();
                     // Check if we can delivered stored out of order messages
-                    while (outOfOrderMessages.containsKey(nextExpectedSeq.get())) {
-                        String storedMsg = outOfOrderMessages.remove(nextExpectedSeq.get());
+                    while (outOfOrderMessages.get(packet.getPort()).containsKey(nextExpectedSeq.get(packet.getPort()).get())) {
+                        String storedMsg = outOfOrderMessages.get(packet.getPort()).remove(nextExpectedSeq.get(packet.getPort()).get());
                         listener.onDeliver(packet.getPort() - 3000, storedMsg);
-                        nextExpectedSeq.incrementAndGet();
+                        nextExpectedSeq.get(packet.getPort()).incrementAndGet();
                     }
                 } else {
-                    System.out.println("Message out of order. Expected seq: " + nextExpectedSeq + ", received seq: " + seq);
-                    outOfOrderMessages.put(seq, strippedSeq);
+                    if (seq < nextExpectedSeq.get(packet.getPort()).get()) { // Duplicate message, already delivered
+                        System.out.println("Duplicate message received. Expected seq: " + nextExpectedSeq.get(packet.getPort()) + ", received seq: " + seq);
+                    } else {
+                        System.out.println("Message out of order. Expected seq: " + nextExpectedSeq.get(packet.getPort()) + ", received seq: " + seq);
+                        outOfOrderMessages.get(packet.getPort()).put(seq, strippedSeq);
+                    }
                 }
                 break;
             default:
-                //check auth
+                System.out.println("Unknown message type received: " + message);
                 break;
         }
     }
@@ -182,20 +172,23 @@ public class NetworkLayerLib implements ReceiverListener {
         byte[] data = ackMsg.getBytes();
         InetAddress address = packet.getAddress();
         int port = packet.getPort();
-        DatagramPacket ackPacket = new DatagramPacket(data, data.length, address, port);//FIXME HARDCODED PORT for testing
+        DatagramPacket ackPacket = new DatagramPacket(data, data.length, address, port);
         socket.send(ackPacket);
         System.out.println("Sent ACK: " + ackMsg);
     }
 
+    /* ===== Diffie–Hellman ===== */
+
     public void sendDHResponse(DatagramPacket packet) throws Exception {
         String msg = new String(packet.getData(), 0, packet.getLength());
         String pubKeyB64 = msg.split(" ")[2];
+        String seq = msg.split(" ")[4];
         byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
         KeyFactory kf = KeyFactory.getInstance("DiffieHellman");
         PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
         KeyPair keys = CryptoLib.generateDHKeyPairReceiver(pubkey);
         String myPubKeyB64 = Base64.getEncoder().encodeToString(keys.getPublic().getEncoded());
-        String DHresponse= "DH RESP= " + myPubKeyB64;
+        String DHresponse= "DH RESP= " + myPubKeyB64 + " SEQ= " + seq;
         byte[] sharedSecret = CryptoLib.computeSharedSecret(keys.getPrivate(), pubkey);
         SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
         sharedSecrets.put(packet.getPort(), hmacKey);
@@ -204,12 +197,17 @@ public class NetworkLayerLib implements ReceiverListener {
         socket.send(DHresponsePacket);
     }
 
-    public void handleDH(int destPort, int port) {
+    public void handleDH(String dest, int port, int seq) {
         byte[] pubKeyBytes = dhKeyPair.getPublic().getEncoded();
         String pubKeyB64 = Base64.getEncoder().encodeToString(pubKeyBytes);
-        String DHrequest = "DH REQ= " + pubKeyB64;
+        String DHrequest = "DH REQ= " + pubKeyB64 + " SEQ= " + seq;
+
         try {
-            alpSend(pubKeyB64, DHrequest, destPort);
+            byte[] data = DHrequest.getBytes();
+            InetAddress address = InetAddress.getByName(dest);
+            DatagramPacket packet = new DatagramPacket(data, data.length, address, port);
+            
+            slSend(packet, seq);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -233,22 +231,34 @@ public class NetworkLayerLib implements ReceiverListener {
             System.out.println("WILL COMPUTE SHARED SECRET WITH: " + pubKeyB64);
             byte[] sharedSecret = CryptoLib.computeSharedSecret(dhKeyPair.getPrivate(), pubkey);
             SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
-            addSharedSecret(port, hmacKey);
+            sharedSecrets.put(port, hmacKey);
             System.out.println("---> Shared secret derived and stored for sender " + port);
         } catch (Exception e) {
             System.out.println("Error generating shared secret: " + e.getMessage());
         }
     }
 
-    public void closeSocket() {
-        socket.close();
-    }
+    /* ===== HMAC ===== */
 
-    public void addSharedSecret(Integer senderId, SecretKey secretKey) {
-        sharedSecrets.put(senderId, secretKey);
-    }
+    private String verifyAndRemoveHmac(String message, int port) {
+        int idx = message.indexOf(" HMAC=");
+        if (idx == -1) {
+            return message;
+        }
+        String payload = message.substring(0, idx);
+        String hmacStr = message.substring(idx + 6);
+        SecretKey key = sharedSecrets.get(port);
 
-    public SecretKey getSharedSecret(Integer senderId) {
-        return sharedSecrets.get(senderId);
+        try {
+            boolean ok = CryptoLib.verifyHmac(payload.getBytes(), Base64.getDecoder().decode(hmacStr), key);
+            if (!ok) {
+                System.out.println("HMAC check failed for message: " + message);
+                return null;
+            }
+        } catch (Exception e) {
+            System.out.println("Error verifying HMAC: " + e.getMessage());
+            return null;
+        }
+        return payload;
     }
 }
