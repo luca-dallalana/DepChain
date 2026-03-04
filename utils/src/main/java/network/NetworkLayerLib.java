@@ -8,6 +8,7 @@ import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.Base64;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -23,7 +24,7 @@ public class NetworkLayerLib implements ReceiverListener {
     private DatagramSocket socket;
 
     private ConcurrentHashMap<Integer, Integer> sentSeq = new ConcurrentHashMap<>(); // Maps ports -> sequence number
-    private ConcurrentHashMap<Integer, Integer> receivedAck = new ConcurrentHashMap<>(); // Maps ports -> last received seq for ACK
+    private ConcurrentHashMap<Integer, Set<Integer>> unAcked= new ConcurrentHashMap<>(); // Maps ports -> set of missing ACKs
     private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, String>> outOfOrderMessages = new ConcurrentHashMap<>(); // Maps ports -> (seq -> message)
     private ConcurrentHashMap<Integer, AtomicInteger> nextExpectedSeq = new ConcurrentHashMap<>(); // Maps ports -> expected seq
     private ConcurrentHashMap<Integer, SecretKey> sharedSecrets = new ConcurrentHashMap<>(); // Maps ports -> shared secrets
@@ -74,8 +75,10 @@ public class NetworkLayerLib implements ReceiverListener {
 
     // Stubborn Links
     public void slSend(DatagramPacket packet, int seq) throws IOException {
-        socket.send(packet);
-        while (receivedAck.get(packet.getPort()) != null && receivedAck.get(packet.getPort()) < seq) {
+        int port = packet.getPort();
+        unAcked.putIfAbsent(port, ConcurrentHashMap.newKeySet());
+        unAcked.get(port).add(seq);
+        while (unAcked.get(port).contains(seq)) {
             socket.send(packet);
             System.out.println("Sent: " + new String(packet.getData(), 0, packet.getLength()));
             try {
@@ -123,7 +126,9 @@ public class NetworkLayerLib implements ReceiverListener {
                 System.out.println("Received DH response message: " + message);
                 int DHseq = Integer.parseInt(message.split(" ")[4]);
                 int port = packet.getPort();
-                receivedAck.put(port, DHseq);
+                if (unAcked.get(port) != null) {
+                    unAcked.get(port).remove(DHseq); // Remove DH seq from unAcked if present
+                }
                 generateSharedSecret(message, port);
                 break;
             case "ACK":
@@ -131,8 +136,8 @@ public class NetworkLayerLib implements ReceiverListener {
                 String strippedAck = verifyAndRemoveHmac(message, packet.getPort());
                 if (strippedAck == null) break;
                 int seqAck = Integer.parseInt(strippedAck.substring(4));
-                if (receivedAck.get(packet.getPort()) == null || receivedAck.get(packet.getPort()) < seqAck) { // Dup ACK check
-                    receivedAck.put(packet.getPort(), seqAck);
+                if (unAcked.get(packet.getPort()) != null) {
+                    unAcked.get(packet.getPort()).remove(seqAck); // Remove ACK seq from unAcked if present
                 }
                 break;
             case "SEQ":
