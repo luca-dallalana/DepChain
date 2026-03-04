@@ -1,21 +1,27 @@
 package config;
 
+import crypto.KeySetup;
+import threshsig.KeyShare;
+import threshsig.GroupKey;
+
 import java.security.PublicKey;
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MemberConfig {
-    private final int ID;               // This replica's ID 
-    private final PublicKey publicKey;  // For threshold signature verification (nullable for now)
+    private final int ID;               // This replica's ID
     private final int N;                                    // Total number of replicas
     private final int F;                                    // Byzantine fault tolerance
-    private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>();      
+    private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>();
+
+    // Threshold signature key material
+    private KeyShare keyShare;          // This replica's secret key share
+    private GroupKey groupKey;          // Public verification parameters (shared by all replicas)      
 
     public MemberConfig(int N, int thisID, PublicKey publicKey) {
         this.N = N;
         this.F = (N - 1) / 3; 
         this.ID = thisID;
-        this.publicKey = publicKey;  
 
         // Validate Byzantine fault tolerance: n = 3f + 1
         if (N < 3 * F + 1) {
@@ -76,5 +82,26 @@ public class MemberConfig {
         }
     }
 
+    public void initializeThresholdKeys(KeyShare[] allShares, GroupKey groupKey) {
+        KeyShare myShare = KeySetup.getKeyShareForReplica(this.ID, allShares);
+        this.keyShare = myShare;
+        this.groupKey = groupKey;
+    }
+
+    public KeyShare getKeyShare() {
+        return keyShare;
+    }
+
+    public void setKeyShare(KeyShare keyShare) {
+        this.keyShare = keyShare;
+    }
+
+    public GroupKey getGroupKey() {
+        return groupKey;
+    }
+
+    public void setGroupKey(GroupKey groupKey) {
+        this.groupKey = groupKey;
+    }
 
 }

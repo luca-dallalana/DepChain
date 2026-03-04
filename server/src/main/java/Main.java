@@ -1,22 +1,40 @@
 import java.net.DatagramSocket;
 
 import config.MemberConfig;
+import crypto.KeyDistributor;
 import member.DepChainMember;
 
 public class Main {
     public static void main(String[] args) {
-        int N = 4;
-        int thisID = 0; 
-        MemberConfig config = new MemberConfig(N, thisID, null);
-
-        int port = 3000 + thisID; //FIXME is this good?
         try {
+            if (args.length < 3) {
+                System.err.println("Usage: java Main <replicaId> <numReplicas> <keySize>");
+                System.exit(1);
+            }
+
+            int thisID = 0; //Integer.parseInt(args[0]);
+            int N = 4; // Integer.parseInt(args[1]);
+            int keySize = Integer.parseInt(args[2]);
+            int f = (N - 1) / 3;
+
+            if (!KeyDistributor.keysExist()) {
+                KeyDistributor.generateAndSaveKeys(N, f, keySize);
+            }
+
+            MemberConfig config = new MemberConfig(N, thisID, null);
+
+            KeyDistributor.KeyLoadResult keys = KeyDistributor.loadKeysForReplica(thisID);
+            config.initializeThresholdKeys(keys.allShares, keys.groupKey);
+
+            int port = 3000 + thisID;
             DatagramSocket socket = new DatagramSocket(port);
-            DepChainMember member = new DepChainMember(config, socket); //FIXME port hardcoded for now
+            DepChainMember member = new DepChainMember(config, socket);
             member.start();
+
         } catch (Exception e) {
+            System.err.println("Failed to start replica: " + e.getMessage());
             e.printStackTrace();
-            return;
+            System.exit(1);
         }
     }
 }

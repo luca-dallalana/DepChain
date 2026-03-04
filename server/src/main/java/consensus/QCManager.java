@@ -3,7 +3,7 @@ package consensus;
 import config.MemberConfig;
 import crypto.CryptoLib;
 import crypto.SignatureService;
-import crypto.SimpleSignatureService;
+import crypto.ThresholdSignatureService;
 import model.Message;
 import model.Node;
 import model.QC;
@@ -25,7 +25,10 @@ public class QCManager {
 
     public QCManager(MemberConfig memberConfig) {
         this.memberConfig = memberConfig;
-        this.signatureService = new SimpleSignatureService();
+        this.signatureService = new ThresholdSignatureService(
+            memberConfig.getKeyShare(),
+            memberConfig.getGroupKey()
+        );
         this.voteStore = new ConcurrentHashMap<>();
     }
 

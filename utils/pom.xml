@@ -9,8 +9,21 @@
     </parent>
     <artifactId>utils</artifactId>
     <packaging>jar</packaging>
+
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
+
     <dependencies>
-        <!-- Add shared dependencies here if needed -->
+        <!-- Threshold signature library from GitHub -->
+        <dependency>
+            <groupId>com.github.sweis</groupId>
+            <artifactId>threshsig</artifactId>
+            <version>master-SNAPSHOT</version>
+        </dependency>
     </dependencies>
     <build>
         <sourceDirectory>src/main/java</sourceDirectory>
