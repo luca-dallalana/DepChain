@@ -1,8 +1,9 @@
 package model;
 
-import crypto.CryptoLib;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Arrays;
+import java.util.concurrent.ConcurrentHashMap;
+
+import crypto.CryptoLib;
 
 public class NodeTree {
     // Store all nodes by their hash for tree traversal
@@ -13,7 +14,7 @@ public class NodeTree {
     public NodeTree() {
         this.nodeStore = new ConcurrentHashMap<>();
 
-        this.firstNode = new Node(null, "", 0);
+        this.firstNode = new Node(null, new ClientRequest(0, ""), 0);
         try {
             storeNode(firstNode);
         } catch (Exception e) {

@@ -2,27 +2,24 @@ package client;
 import java.net.DatagramSocket;
 import java.util.Scanner;
 
+import config.ClientConfig;
+import info.ReplicaInfo;
 import network.DeliveryListener;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
 
 public class Client implements DeliveryListener{
-    
-    private String serverIp;
-    private int serverPort;
-    private int localPort;
+    private ClientConfig config;
     private DatagramSocket socket;
     private boolean running = true;
     private NetworkLayerLib networkLayerLib;
     private UdpReceiver receiver;
 
 
-    public Client(String serverIp, int serverPort, int localPort, DatagramSocket socket) {
-        this.serverIp = serverIp;
-        this.serverPort = serverPort;
-        this.localPort = localPort;
+    public Client(ClientConfig config, DatagramSocket socket) {
+        this.config = config;
         this.socket = socket;
-        this.networkLayerLib = new NetworkLayerLib(this, this.socket);
+        this.networkLayerLib = new NetworkLayerLib(this, socket);
 
     }
     
@@ -55,7 +52,7 @@ public class Client implements DeliveryListener{
             } else if (input.startsWith("send ")) {
                 String message = input.substring(5);
                 try {
-                    sendMessage(message, "localhost", this.serverPort);
+                    sendMessage(message);
                 } catch (Exception e) {
                     System.err.println("Error sending message: " + e.getMessage());
                 }
@@ -66,12 +63,14 @@ public class Client implements DeliveryListener{
         }
         scanner.close();
     }
-    private void sendMessage(String m, String destIp, int destPort) throws java.io.IOException {
+    private void sendMessage(String m) throws java.io.IOException {
         String packet = "NewCommand=" + m;
-        networkLayerLib.alpSend(packet, destIp, destPort);
+        for (ReplicaInfo replica : config.getAllReplicas()) {
+            networkLayerLib.alpSend(packet, replica.getIP(), replica.getPort());
+        }
     }
     @Override
-    public void onDeliver(int senderId, String message) {
+    public void onDeliver(int senderPort, String message) {
 
     }
 

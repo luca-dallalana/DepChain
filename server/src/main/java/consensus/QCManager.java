@@ -1,13 +1,5 @@
 package consensus;
 
-import config.MemberConfig;
-import crypto.CryptoLib;
-import crypto.SignatureService;
-import crypto.ThresholdSignatureService;
-import model.Message;
-import model.Node;
-import model.QC;
-
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +7,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+
+import config.MemberConfig;
+import crypto.CryptoLib;
+import crypto.SignatureService;
+import crypto.ThresholdSignatureService;
+import model.Message;
+import model.Node;
+import model.QC;
 
 public class QCManager {
     private final MemberConfig memberConfig;
@@ -37,10 +37,10 @@ public class QCManager {
             String key = createVoteKey(vote.type, vote.viewNumber, vote.node);
             List<Message> votes = voteStore.computeIfAbsent(key, k -> new ArrayList<>());
 
-            // Check for duplicate voter (same senderId)
+            // Check for duplicate voter (same senderPort)
             synchronized (votes) {
                 for (Message existing : votes) {
-                    if (existing.senderId == vote.senderId) {
+                    if (existing.senderPort == vote.senderPort) {
                         return false;
                     }
                 }

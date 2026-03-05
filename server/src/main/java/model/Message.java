@@ -6,5 +6,5 @@ public final class Message {
     public Node    node;         // the proposed node
     public QC      justify;
     public byte[]  partialSig;
-    public int     senderId;
+    public int     senderPort;
 }

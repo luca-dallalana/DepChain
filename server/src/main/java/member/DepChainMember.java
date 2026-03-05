@@ -6,8 +6,9 @@ import java.net.DatagramSocket;
 import com.google.gson.Gson;
 
 import config.MemberConfig;
-import config.ReplicaInfo;
 import consensus.QCManager;
+import info.ReplicaInfo;
+import model.ClientRequest;
 import model.GsonUtils;
 import model.Message;
 import model.Node;
@@ -17,7 +18,6 @@ import network.DeliveryListener;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
 import util.DepChainUtil;
-
 
 public class DepChainMember implements DeliveryListener{
     private NetworkLayerLib networkLayerLib;
@@ -72,9 +72,9 @@ public class DepChainMember implements DeliveryListener{
     }
 
     @Override
-    public void onDeliver(int senderId, String message) {
+    public void onDeliver(int senderPort, String message) {
 
-        System.out.println("Member received message from sender " + senderId + ": " + message);
+        System.out.println("Member received message from sender " + senderPort + ": " + message);
         String payload = message;
         if (payload.startsWith("SEQ=")) {
             int idx = payload.indexOf(' ');
@@ -85,13 +85,35 @@ public class DepChainMember implements DeliveryListener{
         if (payload.startsWith("NewCommand=")) {
             String command = payload.substring("NewCommand=".length());
             System.out.println("Received new command: " + command);
-            memberConfig.addPendingCommand(command);
+            ClientRequest clientCmd = new ClientRequest(senderPort, command);
+            memberConfig.addPendingCommand(clientCmd);
+            if(curView == 0 && memberConfig.isLeader(curView)) {
+                try {
+                    QC qc = new QC("prepare", curView, nodeTree.getFirstNode(), null);
+                    ClientRequest cmd = memberConfig.getPendingCommands().iterator().next();
+                    Node curProposal = Node.createLeaf(qc.node, cmd);//FIXME add user cmd
+                    this.currentProposal = curProposal; // Store for QC formation
+                    Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, qc, curView);
+                    prepareMsg.senderPort = memberConfig.getID();
+                    this.prepareCount++;
+                    new Thread(() -> {
+                        try {
+                            broadcast(prepareMsg);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }).start();
+                    
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
             return; 
             
         }
         Gson gson = GsonUtils.GSON;
         Message m = gson.fromJson(payload, Message.class);
-        m.senderId = senderId; // Ensure senderId is set
+        m.senderPort = senderPort; // Ensure senderPort is set
 
         switch (m.type) {
             case "new-view": //FIXME check non-leaders case ???
@@ -204,8 +226,8 @@ public class DepChainMember implements DeliveryListener{
             this.currentProposal = curProposal; // Store for QC formation
 
             Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, maxQC, curView);
-            prepareMsg.senderId = memberConfig.getID();
-
+            prepareMsg.senderPort = memberConfig.getID();
+            this.prepareCount++;
             broadcast(prepareMsg);
         } catch (Exception e) {
             e.printStackTrace();
@@ -223,7 +245,7 @@ public class DepChainMember implements DeliveryListener{
 
             if (safeNode(m.node, m.justify)) {
                 Message voteMsg = util.voteMsg("prepare", m.node, null, curView);
-                voteMsg.senderId = memberConfig.getID();
+                voteMsg.senderPort = memberConfig.getID();
 
                 int leader = memberConfig.getLeader(curView);
                 ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
@@ -239,8 +261,8 @@ public class DepChainMember implements DeliveryListener{
             QC prepareQC = qcManager.formQC("prepare", curView, currentProposal);
 
             Message preCommitMsg = DepChainUtil.Msg("pre-commit", currentProposal, prepareQC, curView);
-            preCommitMsg.senderId = memberConfig.getID();
-
+            preCommitMsg.senderPort = memberConfig.getID();
+            this.preCommitCount++;
             broadcast(preCommitMsg);
         } catch (Exception e) {
             e.printStackTrace();
@@ -258,7 +280,7 @@ public class DepChainMember implements DeliveryListener{
             prepareQC = m.justify;
 
             Message voteMsg = util.voteMsg("pre-commit", m.justify.node, null, curView);
-            voteMsg.senderId = memberConfig.getID();
+            voteMsg.senderPort = memberConfig.getID();
 
             int leader = memberConfig.getLeader(curView);
             ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
@@ -273,8 +295,8 @@ public class DepChainMember implements DeliveryListener{
             QC precommitQC = qcManager.formQC("pre-commit", curView, currentProposal);
 
             Message commitMsg = DepChainUtil.Msg("commit", currentProposal, precommitQC, curView);
-            commitMsg.senderId = memberConfig.getID();
-
+            commitMsg.senderPort = memberConfig.getID();
+            this.commitCount++;
             broadcast(commitMsg);
         } catch (Exception e) {
             e.printStackTrace();
@@ -294,7 +316,7 @@ public class DepChainMember implements DeliveryListener{
             lockedQC = m.justify;
 
             Message voteMsg = util.voteMsg("commit", m.justify.node, null, curView);
-            voteMsg.senderId = memberConfig.getID();
+            voteMsg.senderPort = memberConfig.getID();
 
             int leader = memberConfig.getLeader(curView);
             ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
@@ -309,7 +331,7 @@ public class DepChainMember implements DeliveryListener{
             QC commitQC = qcManager.formQC("commit", curView, currentProposal);
 
             Message decideMsg = DepChainUtil.Msg("decide", currentProposal, commitQC, curView);
-            decideMsg.senderId = memberConfig.getID();
+            decideMsg.senderPort = memberConfig.getID();
 
             broadcast(decideMsg);
         } catch (Exception e) {

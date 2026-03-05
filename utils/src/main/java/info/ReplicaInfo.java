@@ -1,4 +1,4 @@
-package config;
+package info;
 
 import java.security.PublicKey;
 

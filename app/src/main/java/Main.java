@@ -1,21 +1,33 @@
 import java.net.DatagramSocket;
 
 import client.Client;
+import config.ClientConfig;
+import crypto.KeyDistributor;
 
 public class Main {
     
     public static void main(String[] args) {
         try {
-            String serverIp = "localhost";
-            int serverPort = 5000;
-            int localPort = 6000;
+            if (args.length < 2) {
+                System.err.println("Usage: java Main <clientId> <numReplicas>");
+                System.exit(1);
+            }
 
-            DatagramSocket socket = new DatagramSocket(4004);
-            Client client = new Client(serverIp, serverPort, localPort, socket);
+            int thisID = Integer.parseInt(args[0]);
+            int N = Integer.parseInt(args[1]);
+            int f = (N - 1) / 3;
+
+            ClientConfig config = new ClientConfig(N, thisID, null);
+
+            int port = 4000 + thisID;
+            DatagramSocket socket = new DatagramSocket(port);
+            Client client = new Client(config, socket);
             client.start();
+
         } catch (Exception e) {
-            System.err.println("Failed to start client: " + e.getMessage());
+            System.err.println("Failed to start replica: " + e.getMessage());
             e.printStackTrace();
+            System.exit(1);
         }
     }
 }

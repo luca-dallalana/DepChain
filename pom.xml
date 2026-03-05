@@ -14,7 +14,6 @@
         <module>server</module>
         <module>utils</module>
         <module>app</module>
-        <module>centralServer</module>
     </modules>
     <build>
         <plugins>

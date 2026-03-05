@@ -1,4 +1,4 @@
 package network;
 public interface DeliveryListener {
-    void onDeliver(int senderId, String message);
+    void onDeliver(int senderPort, String message);
 }

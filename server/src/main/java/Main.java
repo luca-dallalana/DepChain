@@ -12,8 +12,8 @@ public class Main {
                 System.exit(1);
             }
 
-            int thisID = 0; //Integer.parseInt(args[0]);
-            int N = 4; // Integer.parseInt(args[1]);
+            int thisID = Integer.parseInt(args[0]);
+            int N = Integer.parseInt(args[1]);
             int keySize = Integer.parseInt(args[2]);
             int f = (N - 1) / 3;
 
