@@ -14,7 +14,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ThresholdSignatureService implements SignatureService {
+public class ThresholdSignatureService {
     private final KeyShare keyShare;
     private final GroupKey groupKey;
 
@@ -26,7 +26,6 @@ public class ThresholdSignatureService implements SignatureService {
         this.groupKey = groupKey;
     }
 
-    @Override
     public byte[] createPartialSignature(int voterId, byte[] messageHash) {
         try {
             SigShare sigShare = keyShare.sign(messageHash);
@@ -36,7 +35,6 @@ public class ThresholdSignatureService implements SignatureService {
         }
     }
 
-    @Override
     public byte[] aggregateSignatures(List<byte[]> partialSigs, byte[] messageHash) {
         try {
             // Serialize all partial signatures into a single byte array
@@ -57,7 +55,6 @@ public class ThresholdSignatureService implements SignatureService {
         }
     }
 
-    @Override
     public boolean verifyAggregatedSignature(byte[] aggSig, byte[] messageHash, int quorumSize) {
         try {
             // Deserialize all partial signatures

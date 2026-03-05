@@ -25,18 +25,5 @@ public class KeySetup {
             this.groupKey = groupKey;
             this.shares = shares;
         }
-
-        public int getShareCount() {
-            return shares.length;
-        }
-    }
-
-    public static KeyShare getKeyShareForReplica(int replicaId, KeyShare[] allShares) {
-        for (KeyShare share : allShares) {
-            if (share.getId() == replicaId + 1) {
-                return share;
-            }
-        }
-        throw new IllegalArgumentException("No KeyShare found for replica " + replicaId);
     }
 }

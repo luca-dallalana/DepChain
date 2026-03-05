@@ -5,7 +5,6 @@ import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import crypto.KeySetup;
 import info.ReplicaInfo;
 import model.ClientRequest;
 import threshsig.GroupKey;
@@ -20,11 +19,11 @@ public class MemberConfig {
 
     // Threshold signature key material
     private KeyShare keyShare;          // This replica's secret key share
-    private GroupKey groupKey;          // Public verification parameters (shared by all replicas)      
+    private GroupKey groupKey;          // Public verification parameters (shared by all replicas)
 
     public MemberConfig(int N, int thisID, PublicKey publicKey) {
         this.N = N;
-        this.F = (N - 1) / 3; 
+        this.F = (N - 1) / 3;
         this.ID = thisID;
 
         // Validate Byzantine fault tolerance: n = 3f + 1
@@ -37,7 +36,7 @@ public class MemberConfig {
 
         fillReplicasInfo();
 
-      
+
     }
 
     // Leader election: round-robin based on view number
@@ -62,19 +61,19 @@ public class MemberConfig {
 
     // Getters
     public int getN() {
-        return N; 
+        return N;
     }
 
     public int getF() {
-        return F; 
+        return F;
     }
-   
+
     public int getQuorumSize() {  // 2f+1 for quorum
-         return 2 * F + 1; 
+         return 2 * F + 1;
     }
 
     public int getID() { // return this replica's ID
-        return ID; 
+        return ID;
     }
 
     // Static factory for creating a default 4-replica configuration (f=1)
@@ -86,9 +85,8 @@ public class MemberConfig {
         }
     }
 
-    public void initializeThresholdKeys(KeyShare[] allShares, GroupKey groupKey) {
-        KeyShare myShare = KeySetup.getKeyShareForReplica(this.ID, allShares);
-        this.keyShare = myShare;
+    public void initializeThresholdKeys(KeyShare keyShare, GroupKey groupKey) {
+        this.keyShare = keyShare;
         this.groupKey = groupKey;
     }
 

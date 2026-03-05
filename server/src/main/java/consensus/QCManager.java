@@ -10,7 +10,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import config.MemberConfig;
 import crypto.CryptoLib;
-import crypto.SignatureService;
 import crypto.ThresholdSignatureService;
 import model.Message;
 import model.Node;
@@ -18,7 +17,7 @@ import model.QC;
 
 public class QCManager {
     private final MemberConfig memberConfig;
-    private final SignatureService signatureService;
+    private final ThresholdSignatureService signatureService;
 
     // Vote storage: key = "type:viewNumber:nodeHash", value = list of votes
     private final ConcurrentHashMap<String, List<Message>> voteStore;

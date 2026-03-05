@@ -7,24 +7,23 @@ import member.DepChainMember;
 public class Main {
     public static void main(String[] args) {
         try {
-            if (args.length < 3) {
-                System.err.println("Usage: java Main <replicaId> <numReplicas> <keySize>");
+            if (args.length < 2) {
+                System.err.println("Usage: java Main <replicaId> <numReplicas>");
                 System.exit(1);
             }
 
             int thisID = Integer.parseInt(args[0]);
             int N = Integer.parseInt(args[1]);
-            int keySize = Integer.parseInt(args[2]);
-            int f = (N - 1) / 3;
 
             if (!KeyDistributor.keysExist()) {
-                KeyDistributor.generateAndSaveKeys(N, f, keySize);
+                System.err.println("Keys not found. Run KeyGenerator first to generate keys.");
+                System.exit(1);
             }
 
             MemberConfig config = new MemberConfig(N, thisID, null);
 
             KeyDistributor.KeyLoadResult keys = KeyDistributor.loadKeysForReplica(thisID);
-            config.initializeThresholdKeys(keys.allShares, keys.groupKey);
+            config.initializeThresholdKeys(keys.keyShare, keys.groupKey);
 
             int port = 3000 + thisID;
             DatagramSocket socket = new DatagramSocket(port);

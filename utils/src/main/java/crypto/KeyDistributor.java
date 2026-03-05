@@ -35,13 +35,10 @@ public class KeyDistributor {
         int l = groupKey.getL();
         java.math.BigInteger delta = factorial(l);
 
-        KeyShare[] allShares = new KeyShare[l];
-        for (int i = 0; i < l; i++) {
-            String keySharePath = keyDir + "/replica_" + i + "_keyshare.dat";
-            allShares[i] = KeySerializer.loadKeyShare(keySharePath, groupKey.getModulus(), delta);
-        }
+        String keySharePath = keyDir + "/replica_" + replicaId + "_keyshare.dat";
+        KeyShare myShare = KeySerializer.loadKeyShare(keySharePath, groupKey.getModulus(), delta);
 
-        return new KeyLoadResult(groupKey, allShares);
+        return new KeyLoadResult(groupKey, myShare);
     }
 
     public static boolean keysExist(String keyDir) {
@@ -71,11 +68,11 @@ public class KeyDistributor {
 
     public static class KeyLoadResult {
         public final GroupKey groupKey;
-        public final KeyShare[] allShares;
+        public final KeyShare keyShare;
 
-        public KeyLoadResult(GroupKey groupKey, KeyShare[] allShares) {
+        public KeyLoadResult(GroupKey groupKey, KeyShare keyShare) {
             this.groupKey = groupKey;
-            this.allShares = allShares;
+            this.keyShare = keyShare;
         }
     }
 }
