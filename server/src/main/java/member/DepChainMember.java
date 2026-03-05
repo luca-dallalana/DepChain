@@ -41,6 +41,9 @@ public class DepChainMember implements DeliveryListener{
 
     private Message[] newViewLog;
 
+    private static final long PHASE_TIMEOUT_MS = 5000;
+    private Thread timeoutThread;
+
     public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
         this.memberConfig = memberConfig;
         this.socket = socket;
@@ -73,7 +76,6 @@ public class DepChainMember implements DeliveryListener{
 
     @Override
     public void onDeliver(int senderPort, String message) {
-
         System.out.println("Member received message from sender " + senderPort + ": " + message);
         String payload = message;
         if (payload.startsWith("SEQ=")) {
@@ -103,13 +105,11 @@ public class DepChainMember implements DeliveryListener{
                             e.printStackTrace();
                         }
                     }).start();
-                    
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
             return; 
-            
         }
         Gson gson = GsonUtils.GSON;
         Message m = gson.fromJson(payload, Message.class);
@@ -121,14 +121,16 @@ public class DepChainMember implements DeliveryListener{
                     newViewLog[newViewCount] = m;
                     if (waitFor(0)) {
                         handlePrepare();
+                        startTimeout(); // prepare phase
                     }
                 }
                 break;
             case "prepare":
                 if (memberConfig.isLeader(curView)) {
-                    qcManager.addVote(m); // Collect vote
+                    qcManager.addVote(m);
                     if (waitFor(1)) {
                         handlePreCommitLeader();
+                        startTimeout(); // pre-commit phase
                     }
                 } else {
                     handlePrepareReplica(m);
@@ -136,9 +138,10 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "pre-commit":
                 if (memberConfig.isLeader(curView)) {
-                    qcManager.addVote(m); // Collect vote
+                    qcManager.addVote(m);
                     if (waitFor(2)) {
                         handleCommitLeader();
+                        startTimeout(); // commit phase
                     }
                 } else {
                     handlePreCommitReplica(m);
@@ -146,9 +149,10 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "commit":
                 if (memberConfig.isLeader(curView)) {
-                    qcManager.addVote(m); // Collect vote
+                    qcManager.addVote(m);
                     if (waitFor(3)) {
                         handleDecideLeader();
+                        proposeNewView();
                     }
                 } else {
                     handleCommitReplica(m);
@@ -156,6 +160,7 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "decide":
                 handleDecideReplica(m);
+                proposeNewView();
                 break;
             default:
                 throw new AssertionError("Unknown message type: " + m.type);
@@ -170,6 +175,7 @@ public class DepChainMember implements DeliveryListener{
         commitCount = 0;
         this.receiver = new UdpReceiver(socket, networkLayerLib);
         new Thread(receiver).start();
+        startTimeout(); // restart for new-view phase
     }
 
     // FIXME: need to extend logic
@@ -362,5 +368,40 @@ public class DepChainMember implements DeliveryListener{
         }
         return maxqc;
     }
+
+    // Timeout logic
     
+    private void startTimeout() {
+        stopTimeout();
+        timeoutThread = new Thread(() -> {
+            try {
+                Thread.sleep(PHASE_TIMEOUT_MS);
+                System.out.println("timeout reached. Proposing new view.");
+                proposeNewView();
+            } catch (InterruptedException ignored) {}
+        });
+        timeoutThread.start();
+    }
+
+    private void stopTimeout() {
+        if (timeoutThread != null) {
+            timeoutThread.interrupt();
+            timeoutThread = null;
+        }
+    }
+
+    private void proposeNewView() {
+        stopTimeout();
+        curView++;
+        System.out.println("Proposing new view: " + curView);
+        Message newViewMsg = DepChainUtil.Msg("new-view", null, prepareQC, curView);
+        newViewMsg.senderPort = memberConfig.getID();
+        try {
+            broadcast(newViewMsg);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        startTimeout(); // restart for new-view phase
+    }
 }
+
