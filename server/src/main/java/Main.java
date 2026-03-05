@@ -1,7 +1,6 @@
 import java.net.DatagramSocket;
 
 import config.MemberConfig;
-import crypto.KeyDistributor;
 import member.DepChainMember;
 
 public class Main {
@@ -15,15 +14,7 @@ public class Main {
             int thisID = Integer.parseInt(args[0]);
             int N = Integer.parseInt(args[1]);
 
-            if (!KeyDistributor.keysExist()) {
-                System.err.println("Keys not found. Run KeyGenerator first to generate keys.");
-                System.exit(1);
-            }
-
             MemberConfig config = new MemberConfig(N, thisID, null);
-
-            KeyDistributor.KeyLoadResult keys = KeyDistributor.loadKeysForReplica(thisID);
-            config.initializeThresholdKeys(keys.keyShare, keys.groupKey);
 
             int port = 3000 + thisID;
             DatagramSocket socket = new DatagramSocket(port);

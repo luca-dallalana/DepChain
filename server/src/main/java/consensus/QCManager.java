@@ -24,10 +24,7 @@ public class QCManager {
 
     public QCManager(MemberConfig memberConfig) {
         this.memberConfig = memberConfig;
-        this.signatureService = new ThresholdSignatureService(
-            memberConfig.getKeyShare(),
-            memberConfig.getGroupKey()
-        );
+        this.signatureService = new ThresholdSignatureService();
         this.voteStore = new ConcurrentHashMap<>();
     }
 
@@ -36,7 +33,6 @@ public class QCManager {
             String key = createVoteKey(vote.type, vote.viewNumber, vote.node);
             List<Message> votes = voteStore.computeIfAbsent(key, k -> new ArrayList<>());
 
-            // Check for duplicate voter (same senderPort)
             synchronized (votes) {
                 for (Message existing : votes) {
                     if (existing.senderPort == vote.senderPort) {

@@ -2,7 +2,6 @@ import java.net.DatagramSocket;
 
 import client.Client;
 import config.ClientConfig;
-import crypto.KeyDistributor;
 
 public class Main {
     

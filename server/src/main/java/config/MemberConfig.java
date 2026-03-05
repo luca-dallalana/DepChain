@@ -7,8 +7,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import info.ReplicaInfo;
 import model.ClientRequest;
-import threshsig.GroupKey;
-import threshsig.KeyShare;
 
 public class MemberConfig {
     private final int ID;               // This replica's ID
@@ -16,10 +14,6 @@ public class MemberConfig {
     private final int F;                                    // Byzantine fault tolerance
     private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>();
     private Set<ClientRequest> pendingCommands = ConcurrentHashMap.newKeySet(); // Commands to be executed
-
-    // Threshold signature key material
-    private KeyShare keyShare;          // This replica's secret key share
-    private GroupKey groupKey;          // Public verification parameters (shared by all replicas)
 
     public MemberConfig(int N, int thisID, PublicKey publicKey) {
         this.N = N;
@@ -85,26 +79,6 @@ public class MemberConfig {
         }
     }
 
-    public void initializeThresholdKeys(KeyShare keyShare, GroupKey groupKey) {
-        this.keyShare = keyShare;
-        this.groupKey = groupKey;
-    }
-
-    public KeyShare getKeyShare() {
-        return keyShare;
-    }
-
-    public void setKeyShare(KeyShare keyShare) {
-        this.keyShare = keyShare;
-    }
-
-    public GroupKey getGroupKey() {
-        return groupKey;
-    }
-
-    public void setGroupKey(GroupKey groupKey) {
-        this.groupKey = groupKey;
-    }
 
     public Set<ClientRequest> getPendingCommands() {
         return pendingCommands;
