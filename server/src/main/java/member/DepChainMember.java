@@ -34,11 +34,6 @@ public class DepChainMember implements DeliveryListener{
     private final DepChainUtil util;
     private Node currentProposal; // Track leader's proposal
 
-    private int newViewCount;
-    private int prepareCount;
-    private int preCommitCount;
-    private int commitCount;
-
     private Message[] newViewLog;
 
     private static final long PHASE_TIMEOUT_MS = 60000; //FIXME this is set to 1 minute for testing, should be lower for real use
@@ -100,15 +95,14 @@ public class DepChainMember implements DeliveryListener{
                     this.currentProposal = curProposal; // Store for QC formation
                     Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, qc, curView);
                     prepareMsg.senderPort = memberConfig.getID();
-                    this.prepareCount++;
                     qcManager.addVote(prepareMsg);
-                    new Thread(() -> {
+                    //new Thread(() -> {
                         try {
                             broadcast(prepareMsg);
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
-                    }).start();
+                    //}).start();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -120,10 +114,9 @@ public class DepChainMember implements DeliveryListener{
         m.senderPort = senderPort; // Ensure senderPort is set
 
         switch (m.type) {
-            case "new-view": //FIXME check non-leaders case ???
-                if(m.viewNumber == curView){ // FIXME: paper says curview - 1
-                    newViewLog[newViewCount] = m;
-                    if (waitFor(0)) {
+            case "new-view":
+                if(m.viewNumber >= curView){ // the case where where i m the next leader and vote for me
+                    if (qcManager.addVote(m)) {
                         handlePrepare();
                         startTimeout(); // prepare phase
                     }
@@ -131,8 +124,7 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "prepare":
                 if (memberConfig.isLeader(curView)) {
-                    qcManager.addVote(m);
-                    if (waitFor(1)) {
+                    if (qcManager.addVote(m)) {
                         handlePreCommitLeader();
                         startTimeout(); // pre-commit phase
                     }
@@ -142,8 +134,7 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "pre-commit":
                 if (memberConfig.isLeader(curView)) {
-                    qcManager.addVote(m);
-                    if (waitFor(2)) {
+                    if (qcManager.addVote(m)) {
                         handleCommitLeader();
                         startTimeout(); // commit phase
                     }
@@ -153,8 +144,7 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "commit":
                 if (memberConfig.isLeader(curView)) {
-                    qcManager.addVote(m);
-                    if (waitFor(3)) {
+                    if (qcManager.addVote(m)) {
                         handleDecideLeader();
                         proposeNewView();
                     }
@@ -173,17 +163,12 @@ public class DepChainMember implements DeliveryListener{
     
     public void start() {
         System.out.println("SERVER STARTED: ID=" + memberConfig.getID());
-        newViewCount = 0;
-        prepareCount = 0;
-        preCommitCount = 0;
-        commitCount = 0;
         this.newViewLog = new Message[memberConfig.getN()];
         this.receiver = new UdpReceiver(socket, networkLayerLib);
         new Thread(receiver).start();
         startTimeout(); // restart for new-view phase
     }
 
-    // FIXME: need to extend logic
     private void sendMessage(Message m, String destIp, int destPort) throws java.io.IOException {
         String json = GsonUtils.GSON.toJson(m);
         networkLayerLib.alpSend(json, destIp, destPort);
@@ -195,41 +180,6 @@ public class DepChainMember implements DeliveryListener{
         }
     }
 
-    private boolean waitFor(int phase) {
-        switch (phase) {
-            case 0:
-                newViewCount++;
-                if(newViewCount == memberConfig.getQuorumSize()){
-                    newViewCount = 0;
-                    return true;
-                }
-                return false;
-            case 1:
-                prepareCount++;
-                if(prepareCount == memberConfig.getQuorumSize()){
-                    prepareCount = 0;
-                    return true;
-                }
-                return false;
-            case 2:
-                preCommitCount++;
-                if(preCommitCount == memberConfig.getQuorumSize()){
-                    preCommitCount = 0;
-                    return true;
-                }
-                return false;
-            case 3:
-                commitCount++;
-                if(commitCount == memberConfig.getQuorumSize()){
-                    commitCount = 0;
-                    return true;
-                }
-                return false;
-            default:
-                throw new AssertionError();
-        }
-    }
-
     private void handlePrepare(){
         QC maxQC = getMaxQC(newViewLog);
         try {
@@ -238,7 +188,7 @@ public class DepChainMember implements DeliveryListener{
 
             Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, maxQC, curView);
             prepareMsg.senderPort = memberConfig.getID();
-            this.prepareCount++;
+            qcManager.addVote(prepareMsg);
             broadcast(prepareMsg);
         } catch (Exception e) {
             e.printStackTrace();
@@ -275,7 +225,6 @@ public class DepChainMember implements DeliveryListener{
 
             Message preCommitMsg = DepChainUtil.Msg("pre-commit", currentProposal, prepareQC, curView);
             preCommitMsg.senderPort = memberConfig.getID();
-            this.preCommitCount++;
             qcManager.addVote(preCommitMsg);
             broadcast(preCommitMsg);
         } catch (Exception e) {
@@ -310,7 +259,6 @@ public class DepChainMember implements DeliveryListener{
 
             Message commitMsg = DepChainUtil.Msg("commit", currentProposal, precommitQC, curView);
             commitMsg.senderPort = memberConfig.getID();
-            this.commitCount++;
             qcManager.addVote(commitMsg);
             broadcast(commitMsg);
         } catch (Exception e) {

@@ -11,7 +11,7 @@ public class ThresholdSignatureService {
 
     public ThresholdSignatureService(byte[] privateKeyBytes, List<byte[]> allPublicKeys) {
         this.privateKey = new SecretKey();
-        this.privateKey.from_bendian(privateKeyBytes);
+        this.privateKey.from_lendian(privateKeyBytes);
         this.allPublicKeys = allPublicKeys;
     }
 

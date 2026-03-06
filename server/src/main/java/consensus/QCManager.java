@@ -19,7 +19,7 @@ public class QCManager {
     private final MemberConfig memberConfig;
     private final ThresholdSignatureService signatureService;
 
-    // Vote storage: key = "type:viewNumber:nodeHash", value = list of votes
+    // Vote storage: key = "type:viewNumber", value = list of votes
     private final ConcurrentHashMap<String, List<Message>> voteStore;
 
     public QCManager(MemberConfig memberConfig) {
@@ -33,7 +33,7 @@ public class QCManager {
 
     public boolean addVote(Message vote) {
         try {
-            String key = createVoteKey(vote.type, vote.viewNumber, vote.node);
+            String key = createVoteKey(vote.type, vote.viewNumber);
             List<Message> votes = voteStore.computeIfAbsent(key, k -> new ArrayList<>());
 
             synchronized (votes) {
@@ -52,7 +52,7 @@ public class QCManager {
     }
 
     public QC formQC(String type, int viewNumber, Node node) throws Exception {
-        String key = createVoteKey(type, viewNumber, node);
+        String key = createVoteKey(type, viewNumber);
         List<Message> votes = voteStore.get(key);
 
         System.out.println("received this numebr of votes: " + (votes != null ? votes.size() : 0) + "\n"); //FIXME this is for testing, remove later
@@ -108,9 +108,8 @@ public class QCManager {
         );
     }
 
-    private String createVoteKey(String type, int viewNumber, Node node) throws Exception {
-        String nodeHash = Arrays.toString(node.depHash());
-        return type + ":" + viewNumber + ":" + nodeHash;
+    private String createVoteKey(String type, int viewNumber) {
+        return type + ":" + viewNumber;
     }
 
     private byte[] computeMessageHash(String type, int viewNumber, Node node) throws Exception {
