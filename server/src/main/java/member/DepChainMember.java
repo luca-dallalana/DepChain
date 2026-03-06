@@ -2,6 +2,7 @@ package member;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.util.List;
 
 import com.google.gson.Gson;
 
@@ -34,9 +35,7 @@ public class DepChainMember implements DeliveryListener{
     private final DepChainUtil util;
     private Node currentProposal; // Track leader's proposal
 
-    private Message[] newViewLog;
-
-    private static final long PHASE_TIMEOUT_MS = 60000; //FIXME this is set to 1 minute for testing, should be lower for real use
+    private static final long PHASE_TIMEOUT_MS = 90000; //FIXME this is set to 1 minute for testing, should be lower for real use
     private Thread timeoutThread;
 
     public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
@@ -145,7 +144,7 @@ public class DepChainMember implements DeliveryListener{
             case "commit":
                 if (memberConfig.isLeader(curView)) {
                     if (qcManager.addVote(m)) {
-                        handleDecideLeader();
+                        handleDecideLeader(m);
                         proposeNewView();
                     }
                 } else {
@@ -163,7 +162,6 @@ public class DepChainMember implements DeliveryListener{
     
     public void start() {
         System.out.println("SERVER STARTED: ID=" + memberConfig.getID());
-        this.newViewLog = new Message[memberConfig.getN()];
         this.receiver = new UdpReceiver(socket, networkLayerLib);
         new Thread(receiver).start();
         startTimeout(); // restart for new-view phase
@@ -181,9 +179,18 @@ public class DepChainMember implements DeliveryListener{
     }
 
     private void handlePrepare(){
-        QC maxQC = getMaxQC(newViewLog);
+        QC maxQC = getMaxQC();
         try {
-            Node curProposal = Node.createLeaf(maxQC.node, null);//FIXME add user cmd
+            Node curProposal;
+
+            if (memberConfig.getPendingCommands().isEmpty()) {
+                ClientRequest noOpCmd = new ClientRequest(-1, "NO-OP");
+                curProposal = Node.createLeaf(maxQC.node, noOpCmd);
+            } else {
+                ClientRequest cmd = memberConfig.getPendingCommands().iterator().next();
+                curProposal = Node.createLeaf(maxQC.node, cmd);
+            }
+
             this.currentProposal = curProposal; // Store for QC formation
 
             Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, maxQC, curView);
@@ -289,7 +296,7 @@ public class DepChainMember implements DeliveryListener{
         }
     }
 
-    private void handleDecideLeader() {
+    private void handleDecideLeader(Message m ) {
         try {
             QC commitQC = qcManager.formQC("commit", curView, currentProposal);
 
@@ -300,6 +307,14 @@ public class DepChainMember implements DeliveryListener{
         } catch (Exception e) {
             e.printStackTrace();
         }
+        memberConfig.removePendingCommand(m.node.cmd);
+        String message = "DECIDED= " + m.node.cmd.getCommand();
+        try {
+            networkLayerLib.alpSend(message, "localhost", m.node.cmd.getPort());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        proposeNewView();
     }
 
     private void handleDecideReplica(Message m) {
@@ -312,12 +327,14 @@ public class DepChainMember implements DeliveryListener{
         } catch (IOException e) {
             e.printStackTrace();
         }
+        proposeNewView();
     }
 
-    private QC getMaxQC(Message[] msgs) { //maybe put this in utils
+    private QC getMaxQC() { //maybe put this in utils
+        List<Message> msgs = qcManager.getVotes("new-view", curView);
         QC maxqc = null;
         for (Message m : msgs) {
-            if (m.justify != null) {
+            if (m != null && m.justify != null) {
                 if (maxqc == null || m.justify.viewNumber > maxqc.viewNumber) {
                     maxqc = m.justify;
                 }
@@ -353,8 +370,14 @@ public class DepChainMember implements DeliveryListener{
         System.out.println("Proposing new view: " + curView);
         Message newViewMsg = DepChainUtil.Msg("new-view", null, prepareQC, curView);
         newViewMsg.senderPort = memberConfig.getID();
+        int leaderID = memberConfig.getLeader(curView);
+        ReplicaInfo replica = memberConfig.getReplicaInfo(leaderID);
+        if (replica == null) {
+            qcManager.addVote(newViewMsg);
+            return;
+        }
         try {
-            broadcast(newViewMsg);
+            sendMessage(newViewMsg, replica.getIP(), replica.getPort());
         } catch (IOException e) {
             e.printStackTrace();
         }

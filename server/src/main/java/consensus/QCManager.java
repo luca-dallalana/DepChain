@@ -104,8 +104,13 @@ public class QCManager {
 
     public void clearVotesForView(int viewNumber) {
         voteStore.entrySet().removeIf(entry ->
-            entry.getKey().contains(":" + viewNumber + ":")
+            entry.getKey().contains(":" + viewNumber)
         );
+    }
+
+    public List<Message> getVotes(String type, int viewNumber) {
+        String key = createVoteKey(type, viewNumber);
+        return voteStore.getOrDefault(key, new ArrayList<>());
     }
 
     private String createVoteKey(String type, int viewNumber) {
