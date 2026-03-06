@@ -91,7 +91,9 @@ public class NetworkLayerLib implements ReceiverListener {
 
     @Override
     public void onReceive(DatagramPacket packet) {
+        System.out.println("--------------------------------");
         System.out.println("NetworkLayerLib received from UdpReceiver: " + new String(packet.getData(), 0, packet.getLength()));
+        System.out.println("--------------------------------\n");
         try {
             alpDeliver(packet);
         } catch (IOException e) {
@@ -101,7 +103,6 @@ public class NetworkLayerLib implements ReceiverListener {
 
     public void alpDeliver(DatagramPacket packet) throws IOException {
         String message = new String(packet.getData(), 0, packet.getLength());
-        System.out.println("Delivering message: " + message);
 
         String prefix = message.split("=")[0];
 
@@ -165,6 +166,9 @@ public class NetworkLayerLib implements ReceiverListener {
                         System.out.println("Duplicate message received. Expected seq: " + nextExpectedSeq.get(packet.getPort()) + ", received seq: " + seq);
                     } else {
                         System.out.println("Message out of order. Expected seq: " + nextExpectedSeq.get(packet.getPort()) + ", received seq: " + seq);
+                        if (outOfOrderMessages.get(packet.getPort()) == null) {
+                            outOfOrderMessages.put(packet.getPort(), new ConcurrentHashMap<>());
+                        }
                         outOfOrderMessages.get(packet.getPort()).put(seq, strippedSeq);
                     }
                 }

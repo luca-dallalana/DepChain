@@ -1,59 +1,38 @@
 package crypto;
 
 import supranational.blst.*;
-import tech.pegasys.teku.bls.impl.blst.JBlst;
 import java.util.*;
 
 public class ThresholdSignatureService {
     private static final String DST = "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_";
 
-    private final scalar privateKey;
+    private final SecretKey privateKey;
     private final List<byte[]> allPublicKeys;
 
-    static {
-        JBlst.loadNativeLibrary();
-    }
-
     public ThresholdSignatureService(byte[] privateKeyBytes, List<byte[]> allPublicKeys) {
-        this.privateKey = new scalar();
-        blst.scalar_from_bendian(this.privateKey, privateKeyBytes);
+        this.privateKey = new SecretKey();
+        this.privateKey.from_bendian(privateKeyBytes);
         this.allPublicKeys = allPublicKeys;
     }
 
     public byte[] createPartialSignature(int voterId, byte[] messageHash) {
-        p2 sig = new p2();
-        blst.sign_pk2_in_g1(sig, null, messageHash, DST.getBytes(), privateKey);
-
-        byte[] serialized = new byte[blst.P2_COMPRESSED_BYTES];
-        blst.p2_affine_compress(serialized, sig.to_affine());
-        return serialized;
+        P2 sig = new P2().hash_to(messageHash, DST).sign_with(privateKey);
+        return sig.compress();
     }
 
     public byte[] aggregateSignatures(List<byte[]> partialSigs, byte[] messageHash) {
-        p2 aggregated = new p2();
-        p2_affine point = new p2_affine();
-        blst.p2_uncompress(point, partialSigs.get(0));
-        blst.p2_from_affine(aggregated, point);
-
+        P2 aggregated = new P2_Affine(partialSigs.get(0)).to_jacobian();
         for (int i = 1; i < partialSigs.size(); i++) {
-            blst.p2_uncompress(point, partialSigs.get(i));
-            blst.p2_add_or_double_affine(aggregated, aggregated, point);
+            aggregated.aggregate(new P2_Affine(partialSigs.get(i)));
         }
-
-        byte[] result = new byte[blst.P2_COMPRESSED_BYTES];
-        blst.p2_affine_compress(result, aggregated.to_affine());
-        return result;
+        return aggregated.compress();
     }
 
     public boolean verifyPartialSignature(byte[] partialSig, byte[] messageHash, int senderId) {
         try {
-            p1_affine pk = new p1_affine();
-            blst.p1_uncompress(pk, allPublicKeys.get(senderId));
-
-            p2_affine sig = new p2_affine();
-            blst.p2_uncompress(sig, partialSig);
-
-            return blst.core_verify_pk_in_g1(pk, sig, true, messageHash, DST.getBytes(), null) == BLST_ERROR.BLST_SUCCESS;
+            P1_Affine pk = new P1_Affine(allPublicKeys.get(senderId));
+            P2_Affine sig = new P2_Affine(partialSig);
+            return pk.core_verify(sig, true, messageHash, DST, null) == BLST_ERROR.BLST_SUCCESS;
         } catch (Exception e) {
             return false;
         }
@@ -61,20 +40,12 @@ public class ThresholdSignatureService {
 
     public boolean verifyAggregatedSignature(byte[] aggSig, byte[] messageHash, int quorumSize) {
         try {
-            p1 aggregatedPk = new p1();
-            p1_affine pkAffine = new p1_affine();
-            blst.p1_uncompress(pkAffine, allPublicKeys.get(0));
-            blst.p1_from_affine(aggregatedPk, pkAffine);
-
+            P1 aggregatedPk = new P1_Affine(allPublicKeys.get(0)).to_jacobian();
             for (int i = 1; i < quorumSize; i++) {
-                blst.p1_uncompress(pkAffine, allPublicKeys.get(i));
-                blst.p1_add_or_double_affine(aggregatedPk, aggregatedPk, pkAffine);
+                aggregatedPk.aggregate(new P1_Affine(allPublicKeys.get(i)));
             }
-
-            p2_affine sig = new p2_affine();
-            blst.p2_uncompress(sig, aggSig);
-
-            return blst.core_verify_pk_in_g1(aggregatedPk.to_affine(), sig, true, messageHash, DST.getBytes(), null) == BLST_ERROR.BLST_SUCCESS;
+            P2_Affine sig = new P2_Affine(aggSig);
+            return aggregatedPk.to_affine().core_verify(sig, true, messageHash, DST, null) == BLST_ERROR.BLST_SUCCESS;
         } catch (Exception e) {
             return false;
         }

@@ -55,6 +55,8 @@ public class QCManager {
         String key = createVoteKey(type, viewNumber, node);
         List<Message> votes = voteStore.get(key);
 
+        System.out.println("received this numebr of votes: " + (votes != null ? votes.size() : 0) + "\n"); //FIXME this is for testing, remove later
+  
         if (votes == null || votes.size() < memberConfig.getQuorumSize()) {
             throw new IllegalStateException("Cannot form QC: insufficient votes");
         }
@@ -78,6 +80,11 @@ public class QCManager {
             if (qc == null) {
                 return false;
             }
+
+            if (qc.viewNumber == 0) {
+                return true;
+            }
+
             byte[] messageHash = computeMessageHash(qc.type, qc.viewNumber, qc.node);
             return signatureService.verifyAggregatedSignature(
                 qc.sig,

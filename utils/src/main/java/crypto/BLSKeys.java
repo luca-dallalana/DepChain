@@ -6,7 +6,7 @@ import java.security.SecureRandom;
 import java.util.*;
 
 public class BLSKeys {
-    private static final String KEY_DIR = ".depchain_keys";
+    private static final String KEY_DIR = "../depchain_keys";
 
     // Generate and save keys for n replicas
     public static void generateKeys(int n) throws IOException {
@@ -17,17 +17,14 @@ public class BLSKeys {
             byte[] ikm = new byte[32];
             new SecureRandom().nextBytes(ikm);
 
-            scalar sk = new scalar();
-            blst.keygen(sk, ikm, null);
+            SecretKey sk = new SecretKey();
+            sk.keygen(ikm);
 
-            p1 pk = new p1();
-            blst.sk_to_pk2_in_g1(pk, null, sk);
+            P1 pk = new P1(sk);
 
-            byte[] skBytes = new byte[32];
-            blst.bendian_from_scalar(skBytes, sk);
+            byte[] skBytes = sk.to_lendian();
 
-            byte[] pkBytes = new byte[blst.P1_COMPRESSED_BYTES];
-            blst.p1_affine_compress(pkBytes, pk.to_affine());
+            byte[] pkBytes = pk.compress();
 
             try (FileOutputStream fos = new FileOutputStream(KEY_DIR + "/replica_" + i + ".key")) {
                 fos.write(skBytes);
@@ -67,7 +64,7 @@ public class BLSKeys {
         try (DataInputStream dis = new DataInputStream(new FileInputStream(KEY_DIR + "/public_keys.dat"))) {
             int n = dis.readInt();
             for (int i = 0; i < n; i++) {
-                byte[] pk = new byte[blst.P1_COMPRESSED_BYTES];
+                byte[] pk = new byte[48];
                 dis.readFully(pk);
                 allPublicKeys.add(pk);
             }
@@ -78,7 +75,7 @@ public class BLSKeys {
 
     // Check if keys exist
     public static boolean keysExist() {
-        return new File(KEY_DIR + "/public_keys.dat").exists();
+        return new File(KEY_DIR, "public_keys.dat").exists();
     }
 
     // CLI entry point

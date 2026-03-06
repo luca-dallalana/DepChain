@@ -27,7 +27,10 @@ public class UdpReceiver implements Runnable{
                 break;
             }
             String msg = new String(packet.getData(), 0, packet.getLength());
+            
+            System.out.println("--------------------------------");
             System.out.println("UdpReceiver Received: " + msg);
+            System.out.println("--------------------------------\n");
 
             listener.onReceive(packet);
         }

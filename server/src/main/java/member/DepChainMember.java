@@ -41,7 +41,7 @@ public class DepChainMember implements DeliveryListener{
 
     private Message[] newViewLog;
 
-    private static final long PHASE_TIMEOUT_MS = 5000;
+    private static final long PHASE_TIMEOUT_MS = 60000; //FIXME this is set to 1 minute for testing, should be lower for real use
     private Thread timeoutThread;
 
     public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
@@ -76,7 +76,10 @@ public class DepChainMember implements DeliveryListener{
 
     @Override
     public void onDeliver(int senderPort, String message) {
+
+         System.out.println("--------------------------------");
         System.out.println("Member received message from sender " + senderPort + ": " + message);
+         System.out.println("--------------------------------\n");
         String payload = message;
         if (payload.startsWith("SEQ=")) {
             int idx = payload.indexOf(' ');
@@ -98,6 +101,7 @@ public class DepChainMember implements DeliveryListener{
                     Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, qc, curView);
                     prepareMsg.senderPort = memberConfig.getID();
                     this.prepareCount++;
+                    qcManager.addVote(prepareMsg);
                     new Thread(() -> {
                         try {
                             broadcast(prepareMsg);
@@ -173,6 +177,7 @@ public class DepChainMember implements DeliveryListener{
         prepareCount = 0;
         preCommitCount = 0;
         commitCount = 0;
+        this.newViewLog = new Message[memberConfig.getN()];
         this.receiver = new UdpReceiver(socket, networkLayerLib);
         new Thread(receiver).start();
         startTimeout(); // restart for new-view phase
@@ -244,7 +249,7 @@ public class DepChainMember implements DeliveryListener{
     private void handlePrepareReplica(Message m) {
         try {
             // Verify the justify QC if present
-            if (m.justify != null && !qcManager.verifyQC(m.justify)) {
+            if (!qcManager.verifyQC(m.justify)) {
                 System.err.println("Invalid justify QC in prepare message");
                 return;
             }
@@ -256,6 +261,8 @@ public class DepChainMember implements DeliveryListener{
                 int leader = memberConfig.getLeader(curView);
                 ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
                 sendMessage(voteMsg, replica.getIP(), replica.getPort());
+            } else {
+                System.err.println("Node failed safety check in prepare message");
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -269,6 +276,7 @@ public class DepChainMember implements DeliveryListener{
             Message preCommitMsg = DepChainUtil.Msg("pre-commit", currentProposal, prepareQC, curView);
             preCommitMsg.senderPort = memberConfig.getID();
             this.preCommitCount++;
+            qcManager.addVote(preCommitMsg);
             broadcast(preCommitMsg);
         } catch (Exception e) {
             e.printStackTrace();
@@ -303,6 +311,7 @@ public class DepChainMember implements DeliveryListener{
             Message commitMsg = DepChainUtil.Msg("commit", currentProposal, precommitQC, curView);
             commitMsg.senderPort = memberConfig.getID();
             this.commitCount++;
+            qcManager.addVote(commitMsg);
             broadcast(commitMsg);
         } catch (Exception e) {
             e.printStackTrace();
