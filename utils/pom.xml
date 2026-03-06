@@ -10,6 +10,21 @@
     <artifactId>utils</artifactId>
     <packaging>jar</packaging>
 
+    <repositories>
+        <repository>
+            <id>consensys</id>
+            <url>https://artifacts.consensys.net/public/maven/maven/</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <dependency>
+            <groupId>tech.pegasys</groupId>
+            <artifactId>jblst</artifactId>
+            <version>0.3.6</version>
+        </dependency>
+    </dependencies>
+
     <build>
         <sourceDirectory>src/main/java</sourceDirectory>
         <plugins>

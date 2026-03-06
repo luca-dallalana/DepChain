@@ -2,6 +2,7 @@ package config;
 
 import java.security.PublicKey;
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -14,6 +15,8 @@ public class MemberConfig {
     private final int F;                                    // Byzantine fault tolerance
     private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>();
     private Set<ClientRequest> pendingCommands = ConcurrentHashMap.newKeySet(); // Commands to be executed
+    private byte[] blsPrivateKey;
+    private List<byte[]> allPublicKeys;
 
     public MemberConfig(int N, int thisID, PublicKey publicKey) {
         this.N = N;
@@ -90,5 +93,18 @@ public class MemberConfig {
 
     public void removePendingCommand(ClientRequest command) {
         this.pendingCommands.remove(command);
+    }
+
+    public void initializeBLSKeys(byte[] privateKey, List<byte[]> allPublicKeys) {
+        this.blsPrivateKey = privateKey;
+        this.allPublicKeys = allPublicKeys;
+    }
+
+    public byte[] getBlsPrivateKey() {
+        return blsPrivateKey;
+    }
+
+    public List<byte[]> getAllPublicKeys() {
+        return allPublicKeys;
     }
 }

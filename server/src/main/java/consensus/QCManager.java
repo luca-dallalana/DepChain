@@ -24,7 +24,10 @@ public class QCManager {
 
     public QCManager(MemberConfig memberConfig) {
         this.memberConfig = memberConfig;
-        this.signatureService = new ThresholdSignatureService();
+        this.signatureService = new ThresholdSignatureService(
+            memberConfig.getBlsPrivateKey(),
+            memberConfig.getAllPublicKeys()
+        );
         this.voteStore = new ConcurrentHashMap<>();
     }
 
