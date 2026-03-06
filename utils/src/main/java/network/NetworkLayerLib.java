@@ -45,9 +45,21 @@ public class NetworkLayerLib implements ReceiverListener {
         sentSeq.put(port, seq);
 
         if (!sharedSecrets.containsKey(port)) {
-            handleDH(dest, port, seq);
+            new Thread(() -> {
+                try {
+                    handleDH(dest, port, seq);
+                    sendAuthenticatedMessage(m, dest, port, seq);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+            return;
         }
 
+        sendAuthenticatedMessage(m, dest, port, seq);
+    }
+
+    public void sendAuthenticatedMessage(String m, String dest, Integer port, int seq) throws IOException {
         String msg = "SEQ=" + seq + " " + m;
         SecretKey key = sharedSecrets.get(port);
         
@@ -70,7 +82,6 @@ public class NetworkLayerLib implements ReceiverListener {
                 e.printStackTrace();
             }
         }).start();
-        
     }
 
     // Stubborn Links
@@ -108,7 +119,7 @@ public class NetworkLayerLib implements ReceiverListener {
 
         switch (prefix) {
             case "DH REQ":
-                System.out.println("Received DH request message ");
+                System.out.println("Received DH request message from port " + packet.getPort());
                 if (sharedSecrets.containsKey(packet.getPort())) {
 
                     System.out.println("Shared secret already exists for port " + packet.getPort());
@@ -120,17 +131,23 @@ public class NetworkLayerLib implements ReceiverListener {
                 }
                 break;
             case "DH RESP":
-                if (sharedSecrets.containsKey(packet.getPort())) {
-                    System.out.println("Shared secret already exists for port " + packet.getPort());
-                    return;
-                }
-                System.out.println("Received DH response message ");
+                System.out.println("Received DH response message from port " + packet.getPort());
+                
                 int DHseq = Integer.parseInt(message.split(" ")[4]);
                 int port = packet.getPort();
+
+                if (sharedSecrets.containsKey(packet.getPort())) {
+                    System.out.println("Shared secret already exists for port " + packet.getPort());
+   
+                } else {
+                    generateSharedSecret(message, port);
+
+                }
+
                 if (unAcked.get(port) != null) {
                     unAcked.get(port).remove(DHseq); // Remove DH seq from unAcked if present
                 }
-                generateSharedSecret(message, port);
+
                 break;
             case "ACK":
                 System.out.println("Received ACK: " + message);
@@ -208,7 +225,7 @@ public class NetworkLayerLib implements ReceiverListener {
             //System.out.println("---> Shared secret derived and stored for sender " + packet.getPort());
         }
 
-        System.out.println("Sending DH response to " + packet.getAddress() + ":" + packet.getPort());
+        System.out.println("Sending DH response to " + packet.getPort());
         String myPubKeyB64 = Base64.getEncoder().encodeToString(dhKeyPair.getPublic().getEncoded());
         String DHresponse= "DH RESP= " + myPubKeyB64 + " SEQ= " + seq;
         DatagramPacket DHresponsePacket = new DatagramPacket(DHresponse.getBytes(), DHresponse.getBytes().length, packet.getAddress(), packet.getPort());
@@ -229,16 +246,6 @@ public class NetworkLayerLib implements ReceiverListener {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        while (!sharedSecrets.containsKey(port)) { //FIXME test this
-            System.out.println("Shared secret not yet established for port " + port);
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-        
     }
 
     private void generateSharedSecret(String msg, int port) {
