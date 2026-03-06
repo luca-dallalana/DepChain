@@ -1,6 +1,7 @@
 package client;
 import java.net.DatagramSocket;
 import java.util.Scanner;
+import java.util.concurrent.ConcurrentHashMap;
 
 import config.ClientConfig;
 import info.ReplicaInfo;
@@ -14,7 +15,8 @@ public class Client implements DeliveryListener{
     private boolean running = true;
     private NetworkLayerLib networkLayerLib;
     private UdpReceiver receiver;
-
+    private ConcurrentHashMap<Integer, String> receivedDecided = new ConcurrentHashMap<>(); //maps port -> decided command
+    private boolean decided = false;
 
     public Client(ClientConfig config, DatagramSocket socket) {
         this.config = config;
@@ -53,6 +55,11 @@ public class Client implements DeliveryListener{
                 String message = input.substring(5);
                 try {
                     sendMessage(message);
+                    while (!decided) {
+                        Thread.sleep(100); // Wait 2F+1 responses
+                    }
+                    String mostCommon = getMostCommonDecided();
+                    System.out.println("The command: " + mostCommon + " was decided.");
                 } catch (Exception e) {
                     System.err.println("Error sending message: " + e.getMessage());
                 }
@@ -69,9 +76,44 @@ public class Client implements DeliveryListener{
             networkLayerLib.alpSend(packet, replica.getIP(), replica.getPort());
         }
     }
+
     @Override
     public void onDeliver(int senderPort, String message) {
+        
+        String payload = message;
+        
+        if (payload.startsWith("SEQ=")) {
+            int idx = payload.indexOf(' ');
+            if (idx != -1) {
+                payload = payload.substring(idx + 1);
+            }
+        }
+        if (payload.startsWith("DECIDED=")) {
+            String reply = payload.substring("DECIDED=".length());
+            System.out.println("Received reply: " + reply);
+            addDecidedCommand(senderPort, reply);
+        }
+    }
 
+    private void addDecidedCommand(int port, String command) {
+        if (receivedDecided.containsKey(port)) {
+            return; // already have a decided command for this port
+        }
+        receivedDecided.put(port, command);
+        if (receivedDecided.size() >= config.getQuorumSize()) {
+            decided = true;
+            System.out.println("Received decided commands from quorum: " + receivedDecided);
+        }
+        
+    }
+
+    private String getMostCommonDecided() {
+        return receivedDecided.values().stream()
+            .collect(java.util.stream.Collectors.groupingBy(cmd -> cmd, java.util.stream.Collectors.counting()))
+            .entrySet().stream()
+            .max(java.util.Map.Entry.comparingByValue())
+            .map(java.util.Map.Entry::getKey)
+            .orElse(null);
     }
 
 }

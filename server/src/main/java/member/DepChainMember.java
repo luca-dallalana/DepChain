@@ -304,11 +304,11 @@ public class DepChainMember implements DeliveryListener{
 
     private void handleDecideReplica(Message m) {
         //execute the command in m.justify.node
-        System.out.println("Command decided: " + m.justify.node.cmd);
-        memberConfig.removePendingCommand(m.justify.node.cmd);
-        String message = "Decided command= " + m.justify.node.cmd;
+        System.out.println("Command decided: " + m.node.cmd.getCommand() + " sending back to client " + m.node.cmd.getPort());
+        memberConfig.removePendingCommand(m.node.cmd);
+        String message = "DECIDED= " + m.node.cmd.getCommand();
         try {
-            networkLayerLib.alpSend(message, "localhost", 5000); // Send execution result to central server
+            networkLayerLib.alpSend(message, "localhost", m.node.cmd.getPort());
         } catch (IOException e) {
             e.printStackTrace();
         }
