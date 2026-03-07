@@ -94,8 +94,8 @@ public class DepChainMember implements DeliveryListener{
                     ClientRequest cmd = memberConfig.getPendingCommands().iterator().next();
                     Node curProposal = Node.createLeaf(qc.node, cmd);//FIXME add user cmd
                     this.currentProposal = curProposal; // Store for QC formation
-                    Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, qc, curView);
-                    prepareMsg.senderPort = memberConfig.getID();
+                    Message prepareMsg = util.voteMsg("prepare", curProposal, qc, curView);
+                    prepareMsg.senderPort = memberConfig.getID() + 3000;
                     qcManager.addVote(prepareMsg);
                     //new Thread(() -> {
                         try {
@@ -181,7 +181,10 @@ public class DepChainMember implements DeliveryListener{
     }
 
     private void handlePrepare(){
-        QC maxQC = getMaxQC();
+        QC maxQC = getMaxQC();  // Read new-view votes first
+
+        // Clear new-view votes to prevent multiple calls to handlePrepare
+        qcManager.clearVotesForTypeView("new-view", curView);
         try {
             Node curProposal;
 
@@ -197,8 +200,8 @@ public class DepChainMember implements DeliveryListener{
 
             this.currentProposal = curProposal; // Store for QC formation
 
-            Message prepareMsg = DepChainUtil.Msg("prepare", curProposal, maxQC, curView);
-            prepareMsg.senderPort = memberConfig.getID();
+            Message prepareMsg = util.voteMsg("prepare", curProposal, maxQC, curView);
+            prepareMsg.senderPort = memberConfig.getID() + 3000;
             qcManager.addVote(prepareMsg);
             broadcast(prepareMsg);
         } catch (Exception e) {
@@ -218,7 +221,7 @@ public class DepChainMember implements DeliveryListener{
             if (safeNode(m.node, m.justify)) {
 
                 Message voteMsg = util.voteMsg("prepare", m.node, null, curView);
-                voteMsg.senderPort = memberConfig.getID();
+                voteMsg.senderPort = memberConfig.getID() + 3000;
 
                 int leader = memberConfig.getLeader(curView);
                 ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
@@ -235,8 +238,8 @@ public class DepChainMember implements DeliveryListener{
         try {
             prepareQC = qcManager.formQC("prepare", curView, currentProposal);
             nodeTree.storeNode(currentProposal);
-            Message preCommitMsg = DepChainUtil.Msg("pre-commit", currentProposal, prepareQC, curView);
-            preCommitMsg.senderPort = memberConfig.getID();
+            Message preCommitMsg = util.voteMsg("pre-commit", currentProposal, prepareQC, curView);
+            preCommitMsg.senderPort = memberConfig.getID() + 3000;
             qcManager.addVote(preCommitMsg);
             broadcast(preCommitMsg);
         } catch (Exception e) {
@@ -260,7 +263,7 @@ public class DepChainMember implements DeliveryListener{
             prepareQC = m.justify;
 
             Message voteMsg = util.voteMsg("pre-commit", m.justify.node, null, curView);
-            voteMsg.senderPort = memberConfig.getID();
+            voteMsg.senderPort = memberConfig.getID() + 3000;
 
             int leader = memberConfig.getLeader(curView);
             ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
@@ -274,8 +277,8 @@ public class DepChainMember implements DeliveryListener{
         try {
             lockedQC = qcManager.formQC("pre-commit", curView, currentProposal);
 
-            Message commitMsg = DepChainUtil.Msg("commit", currentProposal, lockedQC, curView);
-            commitMsg.senderPort = memberConfig.getID();
+            Message commitMsg = util.voteMsg("commit", currentProposal, lockedQC, curView);
+            commitMsg.senderPort = memberConfig.getID() + 3000;
             qcManager.addVote(commitMsg);
             broadcast(commitMsg);
         } catch (Exception e) {
@@ -296,7 +299,7 @@ public class DepChainMember implements DeliveryListener{
             lockedQC = m.justify;
 
             Message voteMsg = util.voteMsg("commit", m.justify.node, null, curView);
-            voteMsg.senderPort = memberConfig.getID();
+            voteMsg.senderPort = memberConfig.getID() + 3000;
 
             int leader = memberConfig.getLeader(curView);
             ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
@@ -310,8 +313,8 @@ public class DepChainMember implements DeliveryListener{
         try {
             QC commitQC = qcManager.formQC("commit", curView, currentProposal);
 
-            Message decideMsg = DepChainUtil.Msg("decide", currentProposal, commitQC, curView);
-            decideMsg.senderPort = memberConfig.getID();
+            Message decideMsg = DepChainUtil.Msg("decide", currentProposal, commitQC, curView); //FIXME UTIL MSG VOTE 
+            decideMsg.senderPort = memberConfig.getID() + 3000;
 
             broadcast(decideMsg);
         } catch (Exception e) {
@@ -376,8 +379,8 @@ public class DepChainMember implements DeliveryListener{
         stopTimeout();
         curView++;
         System.out.println("Proposing new view: " + curView);
-        Message newViewMsg = DepChainUtil.Msg("new-view", null, prepareQC, curView);
-        newViewMsg.senderPort = memberConfig.getID();
+        Message newViewMsg = DepChainUtil.Msg("new-view", null, prepareQC, curView); //FIXME UTIL MSG VOTE
+        newViewMsg.senderPort = memberConfig.getID() + 3000;
         int leaderID = memberConfig.getLeader(curView);
         ReplicaInfo replica = memberConfig.getReplicaInfo(leaderID);
         if (replica == null) {

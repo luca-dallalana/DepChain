@@ -68,13 +68,25 @@ public class QCManager {
         synchronized (votes) {
             for (Message vote : votes) {
                 if (vote.partialSig != null) {
+                    int signerId = vote.senderPort - 3000;
+                    System.out.println("[QC] Collecting signature from signer " + signerId + " (port " + vote.senderPort + ")");
                     partialSigs.add(vote.partialSig);
-                    signerList.add(vote.senderPort - 3000); // Convert port back to member ID
+                    signerList.add(signerId); // Convert port back to member ID
                 }
             }
         }
+        System.out.println("[QC] Final signer list for " + type + ":" + viewNumber + " = " + signerList);
+
         byte[] messageHash = computeMessageHash(type, viewNumber, node);
         System.err.println("HASH OF THE FORMED QC " + type + ":" + viewNumber + ": " + Arrays.toString(messageHash));
+
+        // Verify each partial signature individually before aggregation
+        System.out.println("[QC] Verifying individual partial signatures:");
+        for (int i = 0; i < signerList.size(); i++) {
+            boolean valid = signatureService.verifyPartialSignature(partialSigs.get(i), messageHash, signerList.get(i));
+            System.out.println("[QC]   Signer " + signerList.get(i) + ": " + (valid ? "VALID" : "INVALID!"));
+        }
+
         byte[] aggregatedSig = signatureService.aggregateSignatures(partialSigs, messageHash);
         clearVotesForTypeView(type, viewNumber); // Clear old votes for new view FIXME is this good ? maybe 1 vote will get left behind
         QC qc = new QC(type, viewNumber, node, aggregatedSig);
