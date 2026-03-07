@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -62,18 +63,23 @@ public class QCManager {
 
         
         // Collect partial signatures
+        List<Integer> signerList = new ArrayList<>();
         List<byte[]> partialSigs = new ArrayList<>();
         synchronized (votes) {
             for (Message vote : votes) {
                 if (vote.partialSig != null) {
                     partialSigs.add(vote.partialSig);
+                    signerList.add(vote.senderPort - 3000); // Convert port back to member ID
                 }
             }
         }
         byte[] messageHash = computeMessageHash(type, viewNumber, node);
+        System.err.println("HASH OF THE FORMED QC " + type + ":" + viewNumber + ": " + Arrays.toString(messageHash));
         byte[] aggregatedSig = signatureService.aggregateSignatures(partialSigs, messageHash);
-        //clearVotesForTypeView(type, viewNumber); // Clear old votes for new view FIXME is this good ? maybe 1 vote will get left behind
-        return new QC(type, viewNumber, node, aggregatedSig);
+        clearVotesForTypeView(type, viewNumber); // Clear old votes for new view FIXME is this good ? maybe 1 vote will get left behind
+        QC qc = new QC(type, viewNumber, node, aggregatedSig);
+        qc.signers = signerList;
+        return qc;
     }
 
     public boolean verifyQC(QC qc) {
@@ -83,10 +89,11 @@ public class QCManager {
             }
 
             byte[] messageHash = computeMessageHash(qc.type, qc.viewNumber, qc.node);
+            System.err.println("THIS IS THE HASH IN VERIFY FOR " + qc.type + ":" + qc.viewNumber + ": " + Arrays.toString(messageHash));
             return signatureService.verifyAggregatedSignature(
                 qc.sig,
                 messageHash,
-                memberConfig.getQuorumSize()
+                qc.signers
             );
         } catch (Exception e) {
             e.printStackTrace();
@@ -96,6 +103,7 @@ public class QCManager {
 
     public byte[] createPartialSignature(String type, int viewNumber, Node node) throws Exception {
         byte[] messageHash = computeMessageHash(type, viewNumber, node);
+        System.out.println("Creating partial signature for " + type + ":" + viewNumber + " with message hash: " + Arrays.toString(messageHash));
         return signatureService.createPartialSignature(memberConfig.getID(), messageHash);
     }
 

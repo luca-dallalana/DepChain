@@ -38,15 +38,16 @@ public class ThresholdSignatureService {
         }
     }
 
-    public boolean verifyAggregatedSignature(byte[] aggSig, byte[] messageHash, int quorumSize) {
+    public boolean verifyAggregatedSignature(byte[] aggSig, byte[] messageHash, List<Integer> signers) {
         try {
-            P1 aggregatedPk = new P1_Affine(allPublicKeys.get(0)).to_jacobian();
-            for (int i = 1; i < quorumSize; i++) {
-                aggregatedPk.aggregate(new P1_Affine(allPublicKeys.get(i)));
+            P1 aggregatedPk = new P1_Affine(allPublicKeys.get(signers.get(0))).to_jacobian();
+            for (int i = 1; i < signers.size(); i++) {
+                aggregatedPk.aggregate(new P1_Affine(allPublicKeys.get(signers.get(i))));
             }
             P2_Affine sig = new P2_Affine(aggSig);
             return aggregatedPk.to_affine().core_verify(sig, true, messageHash, DST, null) == BLST_ERROR.BLST_SUCCESS;
         } catch (Exception e) {
+            System.err.println("[BLS] Error during aggregated signature verification: " + e.getMessage());
             return false;
         }
     }
