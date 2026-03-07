@@ -53,6 +53,7 @@ public class NodeTree {
                 Node parent = getNodeByHash(current.parentHash);
 
                 if (parent == null) {
+                    //System.out.println("-------> Parent node not found for node: " + current);
                     return false;
                 }
 
@@ -64,6 +65,7 @@ public class NodeTree {
 
                 current = parent;
             }
+            //System.out.println("-------> Node " + descendant + " does not extend from " + ancestor);
             return false;
         } catch (Exception e) {
             e.printStackTrace();

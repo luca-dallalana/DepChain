@@ -60,6 +60,8 @@ public class DepChainMember implements DeliveryListener{
         if (lockedQC == null) {
             return nodeTree.extendsFrom(node, qc.node);
         }
+        //System.out.println("======= lockedQC node: " + lockedQC.node + " view: " + lockedQC.viewNumber);
+        //System.out.println("======= justify node: " + qc.node + " view: " + qc.viewNumber);
         // Safety (Extends from lockedQC.node) Liveness (QC has higher view than locked QC)
         return nodeTree.extendsFrom(node, lockedQC.node) || qc.viewNumber > lockedQC.viewNumber;
     }
@@ -214,7 +216,6 @@ public class DepChainMember implements DeliveryListener{
             }
 
             if (safeNode(m.node, m.justify)) {
-                nodeTree.storeNode(m.node);
 
                 Message voteMsg = util.voteMsg("prepare", m.node, null, curView);
                 voteMsg.senderPort = memberConfig.getID();
@@ -233,7 +234,7 @@ public class DepChainMember implements DeliveryListener{
     private void handlePreCommitLeader() {
         try {
             prepareQC = qcManager.formQC("prepare", curView, currentProposal);
-
+            nodeTree.storeNode(currentProposal);
             Message preCommitMsg = DepChainUtil.Msg("pre-commit", currentProposal, prepareQC, curView);
             preCommitMsg.senderPort = memberConfig.getID();
             qcManager.addVote(preCommitMsg);
@@ -246,11 +247,16 @@ public class DepChainMember implements DeliveryListener{
     private void handlePreCommitReplica(Message m) {
         try {
             // Verify the prepareQC
-            if (m.justify == null || !qcManager.verifyQC(m.justify)) {
-                System.err.println("Invalid prepareQC in pre-commit message");
+            if (m.justify == null) {
+                System.err.println("Null prepareQC in pre-commit message");
                 return;
             }
-
+            if (!qcManager.verifyQC(m.justify)){
+                System.err.println("Invalid prepareQC in pre-commit message");
+                System.out.println("justify view: " + m.justify.viewNumber + " current view: " + curView);
+                return;
+            }
+            nodeTree.storeNode(m.node);
             prepareQC = m.justify;
 
             Message voteMsg = util.voteMsg("pre-commit", m.justify.node, null, curView);

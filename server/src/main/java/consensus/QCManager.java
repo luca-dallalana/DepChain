@@ -4,7 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -61,8 +60,7 @@ public class QCManager {
             throw new IllegalStateException("Cannot form QC: insufficient votes");
         }
 
-        clearVotesForTypeView(type, viewNumber); // Clear old votes for new view FIXME is this good ? maybe 1 vote will get left behind
-
+        
         // Collect partial signatures
         List<byte[]> partialSigs = new ArrayList<>();
         synchronized (votes) {
@@ -74,15 +72,12 @@ public class QCManager {
         }
         byte[] messageHash = computeMessageHash(type, viewNumber, node);
         byte[] aggregatedSig = signatureService.aggregateSignatures(partialSigs, messageHash);
+        //clearVotesForTypeView(type, viewNumber); // Clear old votes for new view FIXME is this good ? maybe 1 vote will get left behind
         return new QC(type, viewNumber, node, aggregatedSig);
     }
 
     public boolean verifyQC(QC qc) {
         try {
-            if (qc == null) {
-                return false;
-            }
-
             if (qc.viewNumber == 0) {
                 return true;
             }
