@@ -60,6 +60,8 @@ public class Client implements DeliveryListener{
                     }
                     String mostCommon = getMostCommonDecided();
                     System.out.println("The command: " + mostCommon + " was decided.");
+                    decided = false; // reset for next command
+                    receivedDecided.clear();
                 } catch (Exception e) {
                     System.err.println("Error sending message: " + e.getMessage());
                 }

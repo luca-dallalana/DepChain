@@ -91,7 +91,7 @@ public class NetworkLayerLib implements ReceiverListener {
         unAcked.get(port).add(seq);
         while (unAcked.get(port).contains(seq)) {
             socket.send(packet);
-            System.out.println("Sent: " + new String(packet.getData(), 0, packet.getLength()));
+            System.out.println("Sent: " + new String(packet.getData(), 0, packet.getLength()) + " to port " + packet.getPort());
             try {
                 Thread.sleep(600);
             } catch (InterruptedException e) {
@@ -102,9 +102,9 @@ public class NetworkLayerLib implements ReceiverListener {
 
     @Override
     public void onReceive(DatagramPacket packet) {
-        System.out.println("--------------------------------");
-        System.out.println("NetworkLayerLib received from UdpReceiver: " + new String(packet.getData(), 0, packet.getLength()));
-        System.out.println("--------------------------------\n");
+        //System.out.println("--------------------------------");
+        //System.out.println("NetworkLayerLib received from UdpReceiver: " + new String(packet.getData(), 0, packet.getLength()));
+        //System.out.println("--------------------------------\n");
         try {
             alpDeliver(packet);
         } catch (IOException e) {
@@ -119,7 +119,7 @@ public class NetworkLayerLib implements ReceiverListener {
 
         switch (prefix) {
             case "DH REQ":
-                System.out.println("Received DH request message from port " + packet.getPort());
+                //System.out.println("Received DH request message from port " + packet.getPort());
                 if (sharedSecrets.containsKey(packet.getPort())) {
 
                     System.out.println("Shared secret already exists for port " + packet.getPort());
@@ -131,7 +131,7 @@ public class NetworkLayerLib implements ReceiverListener {
                 }
                 break;
             case "DH RESP":
-                System.out.println("Received DH response message from port " + packet.getPort());
+               // System.out.println("Received DH response message from port " + packet.getPort());
                 
                 int DHseq = Integer.parseInt(message.split(" ")[4]);
                 int port = packet.getPort();
@@ -150,7 +150,7 @@ public class NetworkLayerLib implements ReceiverListener {
 
                 break;
             case "ACK":
-                System.out.println("Received ACK: " + message);
+                //System.out.println("Received ACK: " + message);
                 String strippedAck = verifyAndRemoveHmac(message, packet.getPort());
                 if (strippedAck == null) break;
                 int seqAck = Integer.parseInt(strippedAck.substring(4));
@@ -159,7 +159,7 @@ public class NetworkLayerLib implements ReceiverListener {
                 }
                 break;
             case "SEQ":
-                System.out.println("Received SEQ: " + message);
+                //System.out.println("Received SEQ: " + message);
                 String strippedSeq = verifyAndRemoveHmac(message, packet.getPort());
                 if (strippedSeq == null) break;
                 int seq = Integer.parseInt(strippedSeq.substring(4).split(" ")[0]);

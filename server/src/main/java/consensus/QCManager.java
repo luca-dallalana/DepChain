@@ -61,6 +61,8 @@ public class QCManager {
             throw new IllegalStateException("Cannot form QC: insufficient votes");
         }
 
+        clearVotesForTypeView(type, viewNumber); // Clear old votes for new view FIXME is this good ? maybe 1 vote will get left behind
+
         // Collect partial signatures
         List<byte[]> partialSigs = new ArrayList<>();
         synchronized (votes) {
@@ -102,9 +104,9 @@ public class QCManager {
         return signatureService.createPartialSignature(memberConfig.getID(), messageHash);
     }
 
-    public void clearVotesForView(int viewNumber) {
+    public void clearVotesForTypeView(String type, int viewNumber) {
         voteStore.entrySet().removeIf(entry ->
-            entry.getKey().contains(":" + viewNumber)
+            entry.getKey().contains(type + ":" + viewNumber)
         );
     }
 

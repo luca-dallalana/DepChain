@@ -71,9 +71,9 @@ public class DepChainMember implements DeliveryListener{
     @Override
     public void onDeliver(int senderPort, String message) {
 
-         System.out.println("--------------------------------");
-        System.out.println("Member received message from sender " + senderPort + ": " + message);
-         System.out.println("--------------------------------\n");
+        //System.out.println("--------------------------------");
+        //System.out.println("Member received message from sender " + senderPort + ": " + message);
+        //System.out.println("--------------------------------\n");
         String payload = message;
         if (payload.startsWith("SEQ=")) {
             int idx = payload.indexOf(' ');
@@ -184,9 +184,11 @@ public class DepChainMember implements DeliveryListener{
             Node curProposal;
 
             if (memberConfig.getPendingCommands().isEmpty()) {
+                System.out.println("No pending client commands, proposing NO-OP");
                 ClientRequest noOpCmd = new ClientRequest(-1, "NO-OP");
                 curProposal = Node.createLeaf(maxQC.node, noOpCmd);
             } else {
+                System.out.println("Processing pending client command " + memberConfig.getPendingCommands());
                 ClientRequest cmd = memberConfig.getPendingCommands().iterator().next();
                 curProposal = Node.createLeaf(maxQC.node, cmd);
             }
@@ -212,6 +214,8 @@ public class DepChainMember implements DeliveryListener{
             }
 
             if (safeNode(m.node, m.justify)) {
+                nodeTree.storeNode(m.node);
+
                 Message voteMsg = util.voteMsg("prepare", m.node, null, curView);
                 voteMsg.senderPort = memberConfig.getID();
 
@@ -228,7 +232,7 @@ public class DepChainMember implements DeliveryListener{
     
     private void handlePreCommitLeader() {
         try {
-            QC prepareQC = qcManager.formQC("prepare", curView, currentProposal);
+            prepareQC = qcManager.formQC("prepare", curView, currentProposal);
 
             Message preCommitMsg = DepChainUtil.Msg("pre-commit", currentProposal, prepareQC, curView);
             preCommitMsg.senderPort = memberConfig.getID();
@@ -262,9 +266,9 @@ public class DepChainMember implements DeliveryListener{
 
     private void handleCommitLeader() {
         try {
-            QC precommitQC = qcManager.formQC("pre-commit", curView, currentProposal);
+            lockedQC = qcManager.formQC("pre-commit", curView, currentProposal);
 
-            Message commitMsg = DepChainUtil.Msg("commit", currentProposal, precommitQC, curView);
+            Message commitMsg = DepChainUtil.Msg("commit", currentProposal, lockedQC, curView);
             commitMsg.senderPort = memberConfig.getID();
             qcManager.addVote(commitMsg);
             broadcast(commitMsg);
@@ -314,7 +318,6 @@ public class DepChainMember implements DeliveryListener{
         } catch (IOException e) {
             e.printStackTrace();
         }
-        proposeNewView();
     }
 
     private void handleDecideReplica(Message m) {
@@ -327,7 +330,6 @@ public class DepChainMember implements DeliveryListener{
         } catch (IOException e) {
             e.printStackTrace();
         }
-        proposeNewView();
     }
 
     private QC getMaxQC() { //maybe put this in utils
