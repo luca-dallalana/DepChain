@@ -329,7 +329,7 @@ public class DepChainMember implements DeliveryListener{
                 }
             return;
         }
-
+        memberConfig.addToAppState(m.node.cmd.getCommand());
         memberConfig.removePendingCommand(m.node.cmd);
         String message = "DECIDED= " + m.node.cmd.getCommand();
         try {
@@ -352,6 +352,8 @@ public class DepChainMember implements DeliveryListener{
         }
 
         System.out.println("Command decided: " + m.node.cmd.getCommand() + " sending back to client " + m.node.cmd.getPort());
+        memberConfig.addToAppState(m.node.cmd.getCommand());
+        System.out.println("Current app state: " + memberConfig.getAppState());
         memberConfig.removePendingCommand(m.node.cmd);
         String message = "DECIDED= " + m.node.cmd.getCommand();
         try {

@@ -1,6 +1,7 @@
 package config;
 
 import java.security.PublicKey;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -17,6 +18,7 @@ public class MemberConfig {
     private Set<ClientRequest> pendingCommands = ConcurrentHashMap.newKeySet(); // Commands to be executed
     private byte[] blsPrivateKey;
     private List<byte[]> allPublicKeys;
+    private List<String> appState = new ArrayList<>();
 
     public MemberConfig(int N, int thisID, PublicKey publicKey) {
         this.N = N;
@@ -106,5 +108,13 @@ public class MemberConfig {
 
     public List<byte[]> getAllPublicKeys() {
         return allPublicKeys;
+    }
+
+    public List<String> getAppState() {
+        return appState;
+    }
+
+    public void addToAppState(String command) {
+        this.appState.add(command);
     }
 }
