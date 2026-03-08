@@ -182,6 +182,12 @@ public class DepChainMember implements DeliveryListener{
 
     private void handlePrepare(){
         QC maxQC = getMaxQC();  // Read new-view votes first
+        
+        if (maxQC.viewNumber > lockedQC.viewNumber) {
+            // FIXME this node needs to catch up with the node from maxQC before proceeding
+            System.out.println("Received new-view with higher view QC, updating view to " + maxQC.viewNumber); //FIXME should also catch up
+            curView = maxQC.viewNumber; // Update to higher view
+        }
 
         // Clear new-view votes to prevent multiple calls to handlePrepare
         qcManager.clearVotesForTypeView("new-view", curView);
@@ -213,12 +219,30 @@ public class DepChainMember implements DeliveryListener{
     private void handlePrepareReplica(Message m) {
         try {
             // Verify the justify QC if present
+
+            if (m.justify == null) {
+                System.err.println("Null new-view maxQC in prepare message");
+                return;
+            }
+            
+            int matchResult = util.matchingMsg(m, curView); // 0 lower view, 1 exact match, 2 same type higher view
+
+            if (matchResult == 0 || !cameFromLeader(m, m.viewNumber)) {
+                System.err.println("Invalid late message or sender in prepare message");
+                return;
+            }
+
             if (curView != 0 && !qcManager.verifyQC(m.justify)) {
                 System.err.println("Invalid justify QC in prepare message");
                 return;
             }
+            
+            if (matchResult == 2) {
+                System.out.println("Received higher view prepare message, updating view to " + m.viewNumber); //FIXME should also catch up
+                curView = m.viewNumber; // Update to higher view
+            }
 
-            if (safeNode(m.node, m.justify)) {
+            if (nodeTree.extendsFrom(m.node, m.justify.node) && safeNode(m.node, m.justify)) {
 
                 Message voteMsg = util.voteMsg("prepare", m.node, null, curView);
                 voteMsg.senderPort = memberConfig.getID() + 3000;
@@ -254,11 +278,25 @@ public class DepChainMember implements DeliveryListener{
                 System.err.println("Null prepareQC in pre-commit message");
                 return;
             }
+
+            int matchResult = util.matchingQC(m.justify, "prepare", curView); // 0 no match, 1 exact match, 2 same type higher view
+
+            if (matchResult == 0 || !cameFromLeader(m, m.viewNumber)) {
+                System.err.println("Invalid late prepareQC or sender in pre-commit message");
+                return;
+            }
+
             if (!qcManager.verifyQC(m.justify)){
                 System.err.println("Invalid prepareQC in pre-commit message");
                 System.out.println("justify view: " + m.justify.viewNumber + " current view: " + curView);
                 return;
             }
+
+            if (matchResult == 2) {
+                System.out.println("Received higher prepare message, updating view to " + m.viewNumber); //FIXME should also catch up
+                curView = m.viewNumber; // Update to higher view
+            }
+
             nodeTree.storeNode(m.node);
             prepareQC = m.justify;
 
@@ -291,9 +329,27 @@ public class DepChainMember implements DeliveryListener{
     private void handleCommitReplica(Message m) {
         try {
             // Verify the precommitQC
-            if (m.justify == null || !qcManager.verifyQC(m.justify)) {
+
+            if (m.justify == null) {
+                System.err.println("Null precommitQC in commit message");
+                return;
+            }
+
+            int matchResult = util.matchingQC(m.justify, "pre-commit", curView); // 0 no match, 1 exact match, 2 same type higher view
+
+            if (matchResult == 0 || !cameFromLeader(m, m.viewNumber)) {
+                System.err.println("Invalid late precommitQC or sender in commit message");
+                return;
+            }
+
+            if (!qcManager.verifyQC(m.justify)) {
                 System.err.println("Invalid precommitQC in commit message");
                 return;
+            }
+
+            if (matchResult == 2) {
+                    System.out.println("Received higher view pre-commit message, updating view to " + m.viewNumber); //FIXME should also catch up
+                    curView = m.viewNumber; // Update to higher view
             }
 
             lockedQC = m.justify;
@@ -313,7 +369,7 @@ public class DepChainMember implements DeliveryListener{
         try {
             QC commitQC = qcManager.formQC("commit", curView, currentProposal);
 
-            Message decideMsg = DepChainUtil.Msg("decide", currentProposal, commitQC, curView); //FIXME UTIL MSG VOTE 
+            Message decideMsg = DepChainUtil.Msg("decide", currentProposal, commitQC, curView);
             decideMsg.senderPort = memberConfig.getID() + 3000;
 
             broadcast(decideMsg);
@@ -340,6 +396,29 @@ public class DepChainMember implements DeliveryListener{
     }
 
     private void handleDecideReplica(Message m) {
+        if (m.justify == null) {
+                System.err.println("Null commitQC in commit message");
+                return;
+            }
+
+        int matchResult = util.matchingQC(m.justify, "commit", curView); // 0 no match, 1 exact match, 2 same type higher view
+
+        if (matchResult == 0 || !cameFromLeader(m, m.viewNumber)) {
+            System.err.println("Invalid late commitQC or sender in commit message");
+            return;
+        }
+
+        if (!qcManager.verifyQC(m.justify)) {
+            System.err.println("Invalid commitQC in commit message");
+            return;
+        }
+
+        if (matchResult == 2) {
+                System.out.println("Received higher view commit message, updating view to " + m.viewNumber); //FIXME should also catch up
+                curView = m.viewNumber; // Update to higher view
+        }
+
+
         //execute the command in m.justify.node
         if (m.node.cmd.getCommand().equals("NO-OP")) { //FIXME in the future need to check if there are unexecuted commands in the chain before this NO-OP
             System.out.println("No-Op command decided, not executing");
@@ -374,6 +453,10 @@ public class DepChainMember implements DeliveryListener{
             }
         }
         return maxqc;
+    }
+
+    private boolean cameFromLeader(Message m, int viewNumber) {
+        return (m.senderPort - 3000) == memberConfig.getLeader(viewNumber);
     }
 
     // Timeout logic

@@ -26,12 +26,24 @@ public class DepChainUtil {
         return m;
     }
 
-    public boolean matchingMsg(Message m, String type, int viewNumber){
-        return m.type.equals(type) && m.viewNumber == viewNumber;
+    public int matchingMsg(Message m, int viewNumber){ // 0 lower view, 1 exact match, 2 same type higher view
+        if (m.viewNumber == viewNumber) {
+            return 1;
+        }
+        if (m.viewNumber > viewNumber) {
+            return 2;
+        }
+        return 0;
     }
 
-    public boolean matchingQC(QC qc, String type, int viewNumber) {
-        return qc.type.equals(type) && qc.viewNumber == viewNumber;
+    public int matchingQC(QC qc, String type, int viewNumber) { // 0 no match, 1 exact match, 2 same type higher view
+        if (qc.type.equals(type) && qc.viewNumber == viewNumber) {
+            return 1;
+        }
+        if (qc.type.equals(type) && qc.viewNumber > viewNumber) {
+            return 2;
+        }
+        return 0;
     }
 
 }
