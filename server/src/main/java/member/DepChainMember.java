@@ -213,7 +213,7 @@ public class DepChainMember implements DeliveryListener{
     private void handlePrepareReplica(Message m) {
         try {
             // Verify the justify QC if present
-            if (!qcManager.verifyQC(m.justify)) {
+            if (curView != 0 && !qcManager.verifyQC(m.justify)) {
                 System.err.println("Invalid justify QC in prepare message");
                 return;
             }
@@ -399,7 +399,7 @@ public class DepChainMember implements DeliveryListener{
         stopTimeout();
         curView++;
         System.out.println("Proposing new view: " + curView);
-        Message newViewMsg = DepChainUtil.Msg("new-view", null, prepareQC, curView); //FIXME UTIL MSG VOTE
+        Message newViewMsg = DepChainUtil.Msg("new-view", null, prepareQC, curView);
         newViewMsg.senderPort = memberConfig.getID() + 3000;
         int leaderID = memberConfig.getLeader(curView);
         ReplicaInfo replica = memberConfig.getReplicaInfo(leaderID);

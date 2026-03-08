@@ -31,7 +31,7 @@ public class QCManager {
         this.voteStore = new ConcurrentHashMap<>();
     }
 
-    public boolean addVote(Message vote) { //FIXME add signatureService.verifyPartialSignature()
+    public boolean addVote(Message vote) {
         try {
             String key = createVoteKey(vote.type, vote.viewNumber);
             List<Message> votes = voteStore.computeIfAbsent(key, k -> new ArrayList<>());
@@ -42,6 +42,21 @@ public class QCManager {
                         return false;
                     }
                 }
+
+                if (vote.type.equals("new-view")) {
+                    if(!verifyQC(vote.justify)) {
+                        System.out.println("Invalid justify QC in new-view vote from sender " + vote.senderPort);
+                        return false;
+                    }
+                    
+                } else {
+                    byte[] messageHash = computeMessageHash(vote.type, vote.viewNumber, vote.node);
+                    if (!signatureService.verifyPartialSignature(vote.partialSig, messageHash, vote.senderPort - 3000)) {
+                        System.out.println("Invalid partial signature from sender " + vote.senderPort);
+                        return false;
+                    }
+                }
+                
                 votes.add(vote);
                 return votes.size() >= memberConfig.getQuorumSize();
             }
@@ -80,9 +95,6 @@ public class QCManager {
 
     public boolean verifyQC(QC qc) {
         try {
-            if (qc.viewNumber == 0) {
-                return true;
-            }
 
             byte[] messageHash = computeMessageHash(qc.type, qc.viewNumber, qc.node);
             return signatureService.verifyAggregatedSignature(
