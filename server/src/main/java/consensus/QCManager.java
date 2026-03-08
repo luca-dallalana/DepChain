@@ -96,6 +96,11 @@ public class QCManager {
     public boolean verifyQC(QC qc) {
         try {
 
+            if (qc.signers.size() < memberConfig.getQuorumSize()) {
+                System.out.println("QC verification failed: insufficient signers");
+                return false;
+            }
+
             byte[] messageHash = computeMessageHash(qc.type, qc.viewNumber, qc.node);
             return signatureService.verifyAggregatedSignature(
                 qc.sig,
