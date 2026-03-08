@@ -1,6 +1,11 @@
 package crypto;
 
-import supranational.blst.*;
+import tech.pegasys.teku.bls.BLSKeyPair;
+import tech.pegasys.teku.bls.BLSPublicKey;
+import tech.pegasys.teku.bls.BLSSecretKey;
+import org.apache.tuweni.bytes.Bytes32;
+import org.apache.tuweni.bytes.Bytes48;
+
 import java.io.*;
 import java.security.SecureRandom;
 import java.util.*;
@@ -14,17 +19,10 @@ public class BLSKeys {
         List<byte[]> publicKeys = new ArrayList<>();
 
         for (int i = 0; i < n; i++) {
-            byte[] ikm = new byte[32];
-            new SecureRandom().nextBytes(ikm);
+            BLSKeyPair keyPair = BLSKeyPair.random(new SecureRandom());
 
-            SecretKey sk = new SecretKey();
-            sk.keygen(ikm);
-
-            P1 pk = new P1(sk);
-
-            byte[] skBytes = sk.to_lendian();
-
-            byte[] pkBytes = pk.compress();
+            byte[] skBytes = keyPair.getSecretKey().toBytes().toArrayUnsafe();
+            byte[] pkBytes = keyPair.getPublicKey().toBytesCompressed().toArrayUnsafe();
 
             try (FileOutputStream fos = new FileOutputStream(KEY_DIR + "/replica_" + i + ".key")) {
                 fos.write(skBytes);
@@ -56,8 +54,8 @@ public class BLSKeys {
     // Load keys for a specific replica
     public static KeySet loadKeys(int replicaId) throws IOException {
         byte[] privateKey = new byte[32];
-        try (FileInputStream fis = new FileInputStream(KEY_DIR + "/replica_" + replicaId + ".key")) {
-            fis.read(privateKey);
+        try (DataInputStream dis = new DataInputStream(new FileInputStream(KEY_DIR + "/replica_" + replicaId + ".key"))) {
+            dis.readFully(privateKey);
         }
 
         List<byte[]> allPublicKeys = new ArrayList<>();
@@ -73,12 +71,10 @@ public class BLSKeys {
         return new KeySet(privateKey, allPublicKeys);
     }
 
-    // Check if keys exist
     public static boolean keysExist() {
         return new File(KEY_DIR, "public_keys.dat").exists();
     }
 
-    // CLI entry point
     public static void main(String[] args) throws IOException {
         if (args.length < 1) {
             System.err.println("Usage: java BLSKeys <numReplicas>");

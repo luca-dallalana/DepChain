@@ -320,6 +320,16 @@ public class DepChainMember implements DeliveryListener{
         } catch (Exception e) {
             e.printStackTrace();
         }
+        if (m.node.cmd.getCommand().equals("NO-OP")) { //FIXME in the future need to check if there are unexecuted commands in the chain before this NO-OP
+            System.out.println("No-Op command decided, not executing");
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            return;
+        }
+
         memberConfig.removePendingCommand(m.node.cmd);
         String message = "DECIDED= " + m.node.cmd.getCommand();
         try {
@@ -331,6 +341,16 @@ public class DepChainMember implements DeliveryListener{
 
     private void handleDecideReplica(Message m) {
         //execute the command in m.justify.node
+        if (m.node.cmd.getCommand().equals("NO-OP")) { //FIXME in the future need to check if there are unexecuted commands in the chain before this NO-OP
+            System.out.println("No-Op command decided, not executing");
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            return;
+        }
+
         System.out.println("Command decided: " + m.node.cmd.getCommand() + " sending back to client " + m.node.cmd.getPort());
         memberConfig.removePendingCommand(m.node.cmd);
         String message = "DECIDED= " + m.node.cmd.getCommand();

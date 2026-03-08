@@ -31,7 +31,7 @@ public class QCManager {
         this.voteStore = new ConcurrentHashMap<>();
     }
 
-    public boolean addVote(Message vote) {
+    public boolean addVote(Message vote) { //FIXME add signatureService.verifyPartialSignature()
         try {
             String key = createVoteKey(vote.type, vote.viewNumber);
             List<Message> votes = voteStore.computeIfAbsent(key, k -> new ArrayList<>());
@@ -54,40 +54,24 @@ public class QCManager {
     public QC formQC(String type, int viewNumber, Node node) throws Exception {
         String key = createVoteKey(type, viewNumber);
         List<Message> votes = voteStore.get(key);
-
-        System.out.println("received this numebr of votes: " + (votes != null ? votes.size() : 0) + "\n"); //FIXME this is for testing, remove later
   
         if (votes == null || votes.size() < memberConfig.getQuorumSize()) {
             throw new IllegalStateException("Cannot form QC: insufficient votes");
         }
 
-        
         // Collect partial signatures
         List<Integer> signerList = new ArrayList<>();
         List<byte[]> partialSigs = new ArrayList<>();
         synchronized (votes) {
             for (Message vote : votes) {
                 if (vote.partialSig != null) {
-                    int signerId = vote.senderPort - 3000;
-                    System.out.println("[QC] Collecting signature from signer " + signerId + " (port " + vote.senderPort + ")");
                     partialSigs.add(vote.partialSig);
-                    signerList.add(signerId); // Convert port back to member ID
+                    signerList.add(vote.senderPort - 3000); // Convert port back to member ID
                 }
             }
         }
-        System.out.println("[QC] Final signer list for " + type + ":" + viewNumber + " = " + signerList);
 
-        byte[] messageHash = computeMessageHash(type, viewNumber, node);
-        System.err.println("HASH OF THE FORMED QC " + type + ":" + viewNumber + ": " + Arrays.toString(messageHash));
-
-        // Verify each partial signature individually before aggregation
-        System.out.println("[QC] Verifying individual partial signatures:");
-        for (int i = 0; i < signerList.size(); i++) {
-            boolean valid = signatureService.verifyPartialSignature(partialSigs.get(i), messageHash, signerList.get(i));
-            System.out.println("[QC]   Signer " + signerList.get(i) + ": " + (valid ? "VALID" : "INVALID!"));
-        }
-
-        byte[] aggregatedSig = signatureService.aggregateSignatures(partialSigs, messageHash);
+        byte[] aggregatedSig = signatureService.aggregateSignatures(partialSigs);
         clearVotesForTypeView(type, viewNumber); // Clear old votes for new view FIXME is this good ? maybe 1 vote will get left behind
         QC qc = new QC(type, viewNumber, node, aggregatedSig);
         qc.signers = signerList;
@@ -101,7 +85,6 @@ public class QCManager {
             }
 
             byte[] messageHash = computeMessageHash(qc.type, qc.viewNumber, qc.node);
-            System.err.println("THIS IS THE HASH IN VERIFY FOR " + qc.type + ":" + qc.viewNumber + ": " + Arrays.toString(messageHash));
             return signatureService.verifyAggregatedSignature(
                 qc.sig,
                 messageHash,
@@ -115,7 +98,6 @@ public class QCManager {
 
     public byte[] createPartialSignature(String type, int viewNumber, Node node) throws Exception {
         byte[] messageHash = computeMessageHash(type, viewNumber, node);
-        System.out.println("Creating partial signature for " + type + ":" + viewNumber + " with message hash: " + Arrays.toString(messageHash));
         return signatureService.createPartialSignature(memberConfig.getID(), messageHash);
     }
 

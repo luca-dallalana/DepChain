@@ -91,7 +91,9 @@ public class NetworkLayerLib implements ReceiverListener {
         unAcked.get(port).add(seq);
         while (unAcked.get(port).contains(seq)) {
             socket.send(packet);
+            System.out.println("--------------------------------");
             System.out.println("Sent: " + new String(packet.getData(), 0, packet.getLength()) + " to port " + packet.getPort());
+            System.out.println("--------------------------------\n");
             try {
                 Thread.sleep(600);
             } catch (InterruptedException e) {
@@ -213,18 +215,19 @@ public class NetworkLayerLib implements ReceiverListener {
         String pubKeyB64 = msg.split(" ")[2];
         String seq = msg.split(" ")[4];
 
-        if (!sharedSecrets.containsKey(packet.getPort())) {
-            byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
-            KeyFactory kf = KeyFactory.getInstance("DiffieHellman");
-            PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
-            KeyPair keys = CryptoLib.generateDHKeyPairReceiver(pubkey);
-            this.dhKeyPair = keys; // Store our DH key pair for future use
-            byte[] sharedSecret = CryptoLib.computeSharedSecret(keys.getPrivate(), pubkey);
-            SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
-            sharedSecrets.put(packet.getPort(), hmacKey);
-            //System.out.println("---> Shared secret derived and stored for sender " + packet.getPort());
+        synchronized (this.dhKeyPair){
+            if (!sharedSecrets.containsKey(packet.getPort())) {
+                byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
+                KeyFactory kf = KeyFactory.getInstance("DiffieHellman");
+                PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
+                KeyPair keys = CryptoLib.generateDHKeyPairReceiver(pubkey);
+                this.dhKeyPair = keys; // Store our DH key pair for future use
+                byte[] sharedSecret = CryptoLib.computeSharedSecret(keys.getPrivate(), pubkey);
+                SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
+                sharedSecrets.put(packet.getPort(), hmacKey);
+                //System.out.println("---> Shared secret derived and stored for sender " + packet.getPort());
+            }
         }
-
         System.out.println("Sending DH response to " + packet.getPort());
         String myPubKeyB64 = Base64.getEncoder().encodeToString(dhKeyPair.getPublic().getEncoded());
         String DHresponse= "DH RESP= " + myPubKeyB64 + " SEQ= " + seq;

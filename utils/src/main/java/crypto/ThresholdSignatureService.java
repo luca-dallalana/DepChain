@@ -1,40 +1,43 @@
 package crypto;
 
-import supranational.blst.*;
-import java.util.*;
+import tech.pegasys.teku.bls.BLS;
+import tech.pegasys.teku.bls.BLSPublicKey;
+import tech.pegasys.teku.bls.BLSSecretKey;
+import tech.pegasys.teku.bls.BLSSignature;
+import org.apache.tuweni.bytes.Bytes;
+import org.apache.tuweni.bytes.Bytes32;
+import org.apache.tuweni.bytes.Bytes48;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class ThresholdSignatureService {
-    private static final String DST = "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_";
 
-    private final SecretKey privateKey;
-    private final List<byte[]> allPublicKeys;
+    private final BLSSecretKey privateKey;
+    private final List<BLSPublicKey> publicKeys;
 
     public ThresholdSignatureService(byte[] privateKeyBytes, List<byte[]> allPublicKeys) {
-        this.privateKey = new SecretKey();
-        this.privateKey.from_lendian(privateKeyBytes);
-        this.allPublicKeys = allPublicKeys;
+        this.privateKey = BLSSecretKey.fromBytes(Bytes32.wrap(privateKeyBytes));
+        this.publicKeys = allPublicKeys.stream()
+                .map(pk -> BLSPublicKey.fromBytesCompressed(Bytes48.wrap(pk)))
+                .collect(Collectors.toList());
     }
 
     public byte[] createPartialSignature(int voterId, byte[] messageHash) {
-        P2 sig = new P2().hash_to(messageHash, DST).sign_with(privateKey);
-        return sig.compress();
+        return BLS.sign(privateKey, Bytes.wrap(messageHash)).toBytesCompressed().toArrayUnsafe();
     }
 
-    public byte[] aggregateSignatures(List<byte[]> partialSigs, byte[] messageHash) {
-        System.out.println("[BLS] Aggregating " + partialSigs.size() + " signatures");
-        P2 aggregated = new P2_Affine(partialSigs.get(0)).to_jacobian();
-        for (int i = 1; i < partialSigs.size(); i++) {
-            System.out.println("[BLS] Adding signature " + i);
-            aggregated.aggregate(new P2_Affine(partialSigs.get(i)));
-        }
-        return aggregated.compress();
+    public byte[] aggregateSignatures(List<byte[]> partialSigs) {
+        List<BLSSignature> signatures = partialSigs.stream()
+                .map(s -> BLSSignature.fromBytesCompressed(Bytes.wrap(s)))
+                .collect(Collectors.toList());
+        return BLS.aggregate(signatures).toBytesCompressed().toArrayUnsafe();
     }
 
     public boolean verifyPartialSignature(byte[] partialSig, byte[] messageHash, int senderId) {
         try {
-            P1_Affine pk = new P1_Affine(allPublicKeys.get(senderId));
-            P2_Affine sig = new P2_Affine(partialSig);
-            return pk.core_verify(sig, true, messageHash, DST, null) == BLST_ERROR.BLST_SUCCESS;
+            BLSSignature sig = BLSSignature.fromBytesCompressed(Bytes.wrap(partialSig));
+            return BLS.verify(publicKeys.get(senderId), Bytes.wrap(messageHash), sig);
         } catch (Exception e) {
             return false;
         }
@@ -42,23 +45,13 @@ public class ThresholdSignatureService {
 
     public boolean verifyAggregatedSignature(byte[] aggSig, byte[] messageHash, List<Integer> signers) {
         try {
-            System.out.println("[BLS] Verifying with signers: " + signers);
-            System.out.println("[BLS] Total public keys available: " + allPublicKeys.size());
-
-            // Aggregate public keys in same order as signatures (forward order)
-            P1 aggregatedPk = new P1_Affine(allPublicKeys.get(signers.get(0))).to_jacobian();
-            for (int i = 1; i < signers.size(); i++) {
-                System.out.println("[BLS] Aggregating public key for signer: " + signers.get(i));
-                aggregatedPk.aggregate(new P1_Affine(allPublicKeys.get(signers.get(i))));
-            }
-
-            P2_Affine sig = new P2_Affine(aggSig);
-            boolean result = aggregatedPk.to_affine().core_verify(sig, true, messageHash, DST, null) == BLST_ERROR.BLST_SUCCESS;
-            System.out.println("[BLS] Verification result: " + result);
-            return result;
+            List<BLSPublicKey> signerKeys = signers.stream()
+                    .map(publicKeys::get)
+                    .collect(Collectors.toList());
+            BLSSignature signature = BLSSignature.fromBytesCompressed(Bytes.wrap(aggSig));
+            return BLS.fastAggregateVerify(signerKeys, Bytes.wrap(messageHash), signature);
         } catch (Exception e) {
-            System.err.println("[BLS] Error during aggregated signature verification: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("[BLS] Verification error: " + e.getMessage());
             return false;
         }
     }
