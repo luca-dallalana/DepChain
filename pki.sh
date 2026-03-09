@@ -50,7 +50,7 @@ success_count=0
 
 # Generate server keys
 echo "=== Generating Server Keys ==="
-for ((i=1; i<=NUM_SERVERS; i++)); do
+for ((i=0; i<NUM_SERVERS; i++)); do
     # Create subdirectory for each server key pair
     KEY_DIR="$OUTPUT_DIR/server_$i"
     mkdir -p "$KEY_DIR"
@@ -86,7 +86,7 @@ echo ""
 
 # Generate client keys
 echo "=== Generating Client Keys ==="
-for ((i=1; i<=NUM_CLIENTS; i++)); do
+for ((i=0; i<NUM_CLIENTS; i++)); do
     # Create subdirectory for each client key pair
     KEY_DIR="$OUTPUT_DIR/client_$i"
     mkdir -p "$KEY_DIR"
