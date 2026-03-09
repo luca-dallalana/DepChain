@@ -2,6 +2,7 @@ package member;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
@@ -35,6 +36,7 @@ public class DepChainMember implements DeliveryListener{
     private final QCManager qcManager;
     private final DepChainUtil util;
     private Node currentProposal; // Track leader's proposal
+    private int lastExecutedHeight; // Track last executed command height
 
     private static final long PHASE_TIMEOUT_MS = 90000; //FIXME this is set to 1 minute for testing, should be lower for real use
     private Thread timeoutThread;
@@ -49,6 +51,7 @@ public class DepChainMember implements DeliveryListener{
         this.lockedQC = null;
         this.prepareQC = null;
         this.networkLayerLib = new NetworkLayerLib(this, socket);
+        this.lastExecutedHeight = 0;
 
         // Initialize QC management
         this.qcManager = new QCManager(memberConfig);
@@ -411,14 +414,7 @@ public class DepChainMember implements DeliveryListener{
                 }
             return;
         }
-        memberConfig.addToAppState(m.node.cmd.getCommand());
-        memberConfig.removePendingCommand(m.node.cmd);
-        String message = "DECIDED= " + m.node.cmd.getCommand();
-        try {
-            networkLayerLib.alpSend(message, "localhost", m.node.cmd.getPort());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        executeNode(m.node);
     }
 
     private void handleDecideReplica(Message m) {
@@ -444,28 +440,7 @@ public class DepChainMember implements DeliveryListener{
                 curView = m.viewNumber; // Update to higher view
         }
 
-
-        //execute the command in m.justify.node
-        if (m.node.cmd.getCommand().equals("NO-OP")) { //FIXME in the future need to check if there are unexecuted commands in the chain before this NO-OP
-            System.out.println("No-Op command decided, not executing");
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            return;
-        }
-
-        System.out.println("Command decided: " + m.node.cmd.getCommand() + " sending back to client " + m.node.cmd.getPort());
-        memberConfig.addToAppState(m.node.cmd.getCommand());
-        System.out.println("Current app state: " + memberConfig.getAppState());
-        memberConfig.removePendingCommand(m.node.cmd);
-        String message = "DECIDED= " + m.node.cmd.getCommand();
-        try {
-            networkLayerLib.alpSend(message, "localhost", m.node.cmd.getPort());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        executeNode(m.node);
     }
 
     private QC getMaxQC() { //maybe put this in utils
@@ -526,5 +501,49 @@ public class DepChainMember implements DeliveryListener{
         startTimeout(); // restart for new-view phase
     }
     
+    private void executeNode(Node node) {
+        List<Node> cmdToExecute = new ArrayList<>();
+        Node nextNode = node;
+        while (true) {
+            
+            if (nextNode == null) {
+                break; // No more nodes to execute
+            }
+
+            if (nextNode.height <= lastExecutedHeight) { //FIXME should it be only ==?
+                break; // Already executed
+            }
+
+            cmdToExecute.add(nextNode);
+
+            Node tmpNode = nodeTree.getNodeByHash(nextNode.parentHash);
+            nextNode = tmpNode;
+        }
+        lastExecutedHeight = node.height;
+
+        for (int i = cmdToExecute.size() - 1; i >= 0; i--) { // Execute from lowest height to highest
+            Node n = cmdToExecute.get(i);
+            if (n.cmd.getCommand().equals("NO-OP")) {
+                System.out.println("Executed NO-OP at height " + n.height);
+                try {
+                    Thread.sleep(300); // FIXME this is not perfect
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                System.out.println("Executed command at height " + n.height + ": " + n.cmd.getCommand() + " sending back to client " + n.cmd.getPort());
+                memberConfig.addToAppState(n.cmd.getCommand());
+                memberConfig.removePendingCommand(n.cmd);
+                System.out.println("Current app state: " + memberConfig.getAppState());
+                String message = "DECIDED= " + n.cmd.getCommand();
+                try {
+                    networkLayerLib.alpSend(message, "localhost", n.cmd.getPort());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
 }
 
