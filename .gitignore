@@ -7,7 +7,7 @@
 .vscode/
 
 **/target/
-*.sh
 *.dat
 
 **/depchain_keys/
+**/rsa_keys/
