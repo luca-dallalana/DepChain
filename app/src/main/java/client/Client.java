@@ -1,9 +1,11 @@
 package client;
 import java.net.DatagramSocket;
+import java.util.Base64;
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 
 import config.ClientConfig;
+import crypto.CryptoLib;
 import info.ReplicaInfo;
 import network.DeliveryListener;
 import network.NetworkLayerLib;
@@ -74,6 +76,15 @@ public class Client implements DeliveryListener{
     }
     private void sendMessage(String m) throws java.io.IOException {
         String packet = "NewCommand=" + m;
+        byte[] signature;
+        String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
+        try {
+            signature = CryptoLib.sign(m.getBytes(), PRIVATE_KEY_PATH);
+            String signatureB64 = Base64.getEncoder().encodeToString(signature);
+            packet += "SIG=" + signatureB64;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         for (ReplicaInfo replica : config.getAllReplicas()) {
             networkLayerLib.alpSend(packet, replica.getIP(), replica.getPort());
         }

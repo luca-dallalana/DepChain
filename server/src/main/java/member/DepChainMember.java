@@ -2,6 +2,7 @@ package member;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.util.Base64;
 import java.util.List;
 
 import com.google.gson.Gson;
@@ -19,7 +20,7 @@ import network.DeliveryListener;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
 import util.DepChainUtil;
-
+import crypto.CryptoLib;
 public class DepChainMember implements DeliveryListener{
     private NetworkLayerLib networkLayerLib;
     private int curView;          // current view number
@@ -84,9 +85,27 @@ public class DepChainMember implements DeliveryListener{
             }
         }
         if (payload.startsWith("NewCommand=")) {
-            String command = payload.substring("NewCommand=".length());
+            int sigIndex = payload.indexOf("SIG=");
+            if (sigIndex == -1) {
+                System.err.println("No signature found for client command in message, ignoring");
+                return;
+            }
+            String command = payload.substring("NewCommand=".length(), sigIndex).trim();
             System.out.println("Received new command: " + command);
-            ClientRequest clientCmd = new ClientRequest(senderPort, command);
+            String sigB64 = payload.substring(sigIndex + 4).trim();
+            byte[] sig;
+            try {
+                sig = Base64.getDecoder().decode(sigB64);
+            } catch (IllegalArgumentException e) {
+                System.err.println("Invalid Base64 signature: " + sigB64);
+                return;
+            }
+            
+            if(senderPort < 4000){
+                System.err.println("Command received is not from a client, ignoring");
+                return;
+            }
+            ClientRequest clientCmd = new ClientRequest(senderPort, command, sig);
             memberConfig.addPendingCommand(clientCmd);
             if(curView == 0 && memberConfig.isLeader(curView)) {
                 try {
@@ -188,7 +207,6 @@ public class DepChainMember implements DeliveryListener{
             System.out.println("Received new-view with higher view QC, updating view to " + maxQC.viewNumber); //FIXME should also catch up
             curView = maxQC.viewNumber; // Update to higher view
         }
-
         // Clear new-view votes to prevent multiple calls to handlePrepare
         qcManager.clearVotesForTypeView("new-view", curView);
         try {
@@ -196,7 +214,7 @@ public class DepChainMember implements DeliveryListener{
 
             if (memberConfig.getPendingCommands().isEmpty()) {
                 System.out.println("No pending client commands, proposing NO-OP");
-                ClientRequest noOpCmd = new ClientRequest(-1, "NO-OP");
+                ClientRequest noOpCmd = new ClientRequest(-1, "NO-OP",null);
                 curProposal = Node.createLeaf(maxQC.node, noOpCmd);
             } else {
                 System.out.println("Processing pending client command " + memberConfig.getPendingCommands());
@@ -224,7 +242,15 @@ public class DepChainMember implements DeliveryListener{
                 System.err.println("Null new-view maxQC in prepare message");
                 return;
             }
-            
+            byte[] sig = m.node.cmd.getSig();
+            String command = m.node.cmd.getCommand();
+            int senderId = m.node.cmd.getPort() - 4000;
+            String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
+
+            if(!command.equals("NO-OP") && !CryptoLib.verifySignature(command.getBytes(), sig, PUBLIC_KEY_PATH)){
+                System.err.println("Invalid signature for client command in prepare message, ignoring");
+                return;
+            }
             int matchResult = util.matchingMsg(m, curView); // 0 lower view, 1 exact match, 2 same type higher view
 
             if (matchResult == 0 || !cameFromLeader(m, m.viewNumber)) {
@@ -499,5 +525,6 @@ public class DepChainMember implements DeliveryListener{
         }
         startTimeout(); // restart for new-view phase
     }
+    
 }
 
