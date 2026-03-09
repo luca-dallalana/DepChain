@@ -25,7 +25,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = child;
         m.justify = new QC("pre-commit", 0, parent, null); // wrong type QC
-        m.senderPort = 4000; // leader for view 0
+        m.senderPort = 3000; // leader for view 0
         assertDoesNotThrow(() -> invokeHandlePrepareReplica(m));
         System.out.println("-----------------------------------------");
         System.out.println("handlePrepareReplica: wrong type QC rejected");
@@ -43,7 +43,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = child;
         m.justify = new QC("commit", 0, parent, null); // wrong type QC
-        m.senderPort = 4000; // leader
+        m.senderPort = 3000; // leader for view 0
         assertDoesNotThrow(() -> invokeHandlePreCommitReplica(m));
         System.out.println("-----------------------------------------");
         System.out.println("handlePreCommitReplica: wrong type QC rejected");
@@ -61,7 +61,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = child;
         m.justify = new QC("prepare", 0, parent, null); // wrong type QC
-        m.senderPort = 4000; // leader
+        m.senderPort = 3000; // leader for view 0
         assertDoesNotThrow(() -> invokeHandleCommitReplica(m));
         System.out.println("-----------------------------------------");
         System.out.println("handleCommitReplica: wrong type QC rejected");
@@ -79,7 +79,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = child;
         m.justify = new QC("prepare", 0, parent, null);
-        m.senderPort = 4002; // not the leader for view 0
+        m.senderPort = 3002; // not the leader for view 0
         try {
             invokeHandlePrepareReplica(m);
             System.out.println("-----------------------------------------");
@@ -106,7 +106,7 @@ public class PhasesTest {
         m.viewNumber = 1;
         m.node = child;
         m.justify = new QC("prepare", 1, parent, null); // invalid QC
-        m.senderPort = 4000; // leader for view 1
+        m.senderPort = 3001; // leader for view 1
         try {
             invokeHandlePrepareReplica(m);
             System.out.println("-----------------------------------------");
@@ -144,7 +144,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = child;
         m.justify = new QC("prepare", 0, parent, null);
-        m.senderPort = 4002; // not the leader
+        m.senderPort = 3002; // not the leader for view 0
         assertDoesNotThrow(() -> invokeHandlePreCommitReplica(m));
         System.out.println("-----------------------------------------");
         System.out.println("handlePreCommitReplica: invalid sender rejected");
@@ -163,7 +163,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = child;
         m.justify = new QC("prepare", 0, parent, null); // invalid QC
-        m.senderPort = 4000; // leader
+        m.senderPort = 3000; // leader for view 0
         assertDoesNotThrow(() -> invokeHandlePreCommitReplica(m));
         System.out.println("-----------------------------------------");
         System.out.println("handlePreCommitReplica: invalid justify QC rejected");
@@ -178,7 +178,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = null;
         m.justify = null;
-        m.senderPort = 4001;
+        m.senderPort = 3000;
         assertDoesNotThrow(() -> invokeHandleCommitReplica(m));
         System.out.println("-----------------------------------------");
         System.out.println("handleCommitReplica: null justify rejected");
@@ -197,7 +197,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = child;
         m.justify = new QC("pre-commit", 0, parent, null);
-        m.senderPort = 4002; // not the leader
+        m.senderPort = 3002; // not the leader
         assertDoesNotThrow(() -> invokeHandleCommitReplica(m));
         System.out.println("-----------------------------------------");
         System.out.println("handleCommitReplica: invalid sender rejected");
@@ -216,7 +216,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = child;
         m.justify = new QC("pre-commit", 0, parent, null); // invalid QC
-        m.senderPort = 4000; // leader
+        m.senderPort = 3000; // leader for view 0
         assertDoesNotThrow(() -> invokeHandleCommitReplica(m));
         System.out.println("-----------------------------------------");
         System.out.println("handleCommitReplica: invalid justify QC rejected");
@@ -266,7 +266,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = null;
         m.justify = null;
-        m.senderPort = 4001;
+        m.senderPort = 3000;
         // Should not throw, but should print error and return
         assertDoesNotThrow(() -> invokeHandlePrepareReplica(m));
     }
@@ -283,7 +283,7 @@ public class PhasesTest {
         m.viewNumber = 0;
         m.node = child;
         m.justify = new QC("prepare", 0, parent, null);
-        m.senderPort = 4001;
+        m.senderPort = 3000;
         try {
             invokeHandlePrepareReplica(m);
             System.out.println("-----------------------------------------");
