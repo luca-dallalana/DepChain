@@ -7,8 +7,11 @@ import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.security.spec.PKCS8EncodedKeySpec;
+
 public class CryptoLib {
-    final String SIGNATURE_ALGO = "SHA256withRSA";
 
     /* ===== Diffie–Hellman ===== */
 
@@ -40,26 +43,57 @@ public class CryptoLib {
         return new SecretKeySpec(sharedSecret, 0, 32, "HmacSHA256");
     }
 
-    /* ===== Authentication ===== 
+     /* ===== RSA ===== */
+
+    private static PublicKey readPublicKey(String publicKeyPath)
+            throws GeneralSecurityException, IOException {
+
+        FileInputStream pubFis = new FileInputStream(publicKeyPath);
+        byte[] pubEncoded = new byte[pubFis.available()];
+        pubFis.read(pubEncoded);
+        pubFis.close();
+
+        X509EncodedKeySpec pubSpec = new X509EncodedKeySpec(pubEncoded);
+        KeyFactory keyFacPub = KeyFactory.getInstance("RSA");
+        PublicKey pub = keyFacPub.generatePublic(pubSpec);
+
+        return pub;
+    }
+
+    private static PrivateKey readPrivateKey(String privateKeyPath)
+            throws GeneralSecurityException, IOException {
+
+        FileInputStream privFis = new FileInputStream(privateKeyPath);
+        byte[] privEncoded = new byte[privFis.available()];
+        privFis.read(privEncoded);
+        privFis.close();
+
+        PKCS8EncodedKeySpec privSpec = new PKCS8EncodedKeySpec(privEncoded);
+        KeyFactory keyFacPriv = KeyFactory.getInstance("RSA");
+        PrivateKey priv = keyFacPriv.generatePrivate(privSpec);
+
+        return priv;
+    }
 
     // Used only to authenticate DH public keys
     public static byte[] sign(byte[] data, String privateKeyPath) throws Exception {
-        PrivateKey privKey = RSAKeyGenerator.readPrivateKey(privateKeyPath);
-        Signature sig = Signature.getInstance(SIGNATURE_ALGO);
+        PrivateKey privKey = readPrivateKey(privateKeyPath);
+        Signature sig = Signature.getInstance("SHA256withRSA");
         sig.initSign(privKey);
         sig.update(data);
         return sig.sign();
     }
 
+    // Used only to verify authenticity of DH public keys
     public static boolean verifySignature(byte[] data, byte[] signature, String publicKeyPath) throws Exception {
-        PublicKey pubKey = RSAKeyGenerator.readPublicKey(publicKeyPath);
-        Signature sig = Signature.getInstance(SIGNATURE_ALGO);
+        PublicKey pubKey = readPublicKey(publicKeyPath);
+        Signature sig = Signature.getInstance("SHA256withRSA");
         sig.initVerify(pubKey);
         sig.update(data);
         boolean verified = sig.verify(signature);
         return verified;
     }
-    */
+    
     /* ===== HMAC ===== */
 
     public static String computeHmac(byte[] data, SecretKey key) throws Exception{

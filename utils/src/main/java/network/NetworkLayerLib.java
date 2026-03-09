@@ -22,6 +22,7 @@ public class NetworkLayerLib implements ReceiverListener {
     private KeyPair dhKeyPair;
     private DeliveryListener listener;
     private DatagramSocket socket;
+    private String PRIVATE_KEY_PATH;
 
     private ConcurrentHashMap<Integer, Integer> sentSeq = new ConcurrentHashMap<>(); // Maps ports -> sequence number
     private ConcurrentHashMap<Integer, Set<Integer>> unAcked= new ConcurrentHashMap<>(); // Maps ports -> set of missing ACKs
@@ -32,6 +33,14 @@ public class NetworkLayerLib implements ReceiverListener {
     public NetworkLayerLib(DeliveryListener listener, DatagramSocket socket){
         this.listener = listener;
         this.socket = socket;
+
+        if (socket.getLocalPort() >= 4000) {
+            int clientId = socket.getLocalPort() - 4000;
+            PRIVATE_KEY_PATH = "../rsa_keys/client_" + clientId + "/client_" + clientId + ".privatekey";
+        } else {
+            int replicaId = socket.getLocalPort() - 3000;
+            PRIVATE_KEY_PATH = "../rsa_keys/server_" + replicaId + "/server_" + replicaId + ".privatekey";
+        }
         try {
             dhKeyPair = CryptoLib.generateDHKeyPair();
         } catch (Exception e) {
@@ -142,6 +151,10 @@ public class NetworkLayerLib implements ReceiverListener {
                     System.out.println("Shared secret already exists for port " + packet.getPort());
    
                 } else {
+                    if (!verifyRsaSignature(packet, message)) {
+                        System.out.println("Invalid RSA signature in DH response from port " + packet.getPort());
+                        return;
+                    }
                     generateSharedSecret(message, port);
 
                 }
@@ -215,6 +228,11 @@ public class NetworkLayerLib implements ReceiverListener {
         String pubKeyB64 = msg.split(" ")[2];
         String seq = msg.split(" ")[4];
 
+        if (!verifyRsaSignature(packet, msg)) {
+            System.out.println("Invalid RSA signature in DH request from port " + packet.getPort());
+            return;
+        }
+
         synchronized (this.dhKeyPair){
             if (!sharedSecrets.containsKey(packet.getPort())) {
                 byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
@@ -230,7 +248,17 @@ public class NetworkLayerLib implements ReceiverListener {
         }
         System.out.println("Sending DH response to " + packet.getPort());
         String myPubKeyB64 = Base64.getEncoder().encodeToString(dhKeyPair.getPublic().getEncoded());
-        String DHresponse= "DH RESP= " + myPubKeyB64 + " SEQ= " + seq;
+        String DHresponse= "DH RESP= " + myPubKeyB64 + " SEQ= " + seq + " ";
+
+        try {
+            byte[] signature = CryptoLib.sign(DHresponse.getBytes(), PRIVATE_KEY_PATH);
+            String signatureB64 = Base64.getEncoder().encodeToString(signature);
+            DHresponse += "RSA_SIG= " + signatureB64;   
+        } catch (Exception e) {
+            System.out.println("Error signing DH response: " + e.getMessage());
+            return;
+        }
+
         DatagramPacket DHresponsePacket = new DatagramPacket(DHresponse.getBytes(), DHresponse.getBytes().length, packet.getAddress(), packet.getPort());
         socket.send(DHresponsePacket);
     }
@@ -238,7 +266,16 @@ public class NetworkLayerLib implements ReceiverListener {
     public void handleDH(String dest, int port, int seq) {
         byte[] pubKeyBytes = dhKeyPair.getPublic().getEncoded();
         String pubKeyB64 = Base64.getEncoder().encodeToString(pubKeyBytes);
-        String DHrequest = "DH REQ= " + pubKeyB64 + " SEQ= " + seq;
+        String DHrequest = "DH REQ= " + pubKeyB64 + " SEQ= " + seq + " ";
+        
+        try {
+            byte[] signature = CryptoLib.sign(DHrequest.getBytes(), PRIVATE_KEY_PATH);
+            String signatureB64 = Base64.getEncoder().encodeToString(signature);
+            DHrequest += "RSA_SIG= " + signatureB64;   
+        } catch (Exception e) {
+            System.out.println("Error signing DH request: " + e.getMessage());
+            return;
+        }
 
         try {
             byte[] data = DHrequest.getBytes();
@@ -290,4 +327,39 @@ public class NetworkLayerLib implements ReceiverListener {
         }
         return payload;
     }
+
+    /* ===== RSA_SIGNATURES ===== */
+
+    private boolean verifyRsaSignature(DatagramPacket packet, String message) {
+        String[] parts = message.split("RSA_SIG= ");
+       
+        if (parts.length < 2) {
+            System.out.println("No RSA signature found in message: " + message);
+            return false;
+        }
+
+        try {
+            byte[] signature = Base64.getDecoder().decode(parts[1]);
+            
+            String public_key_path;
+
+            if ( packet.getPort() >= 4000 ){
+                int clientId = packet.getPort() - 4000;
+                public_key_path = "../rsa_keys/client_" + clientId + "/client_" + clientId + ".pubkey";
+
+            } else {
+                int replicaId = packet.getPort() - 3000;
+                public_key_path = "../rsa_keys/server_" + replicaId + "/server_" + replicaId + ".pubkey";
+            }
+
+            if (!CryptoLib.verifySignature(parts[0].getBytes(), signature, public_key_path)) {
+                return false;
+            }
+        } catch (Exception e) {
+            System.out.println("Error verifying RSA signature: " + e.getMessage());
+            return false;
+        }
+        return true;
+    }
+
 }

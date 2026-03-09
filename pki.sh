@@ -45,8 +45,7 @@ echo "Generating $NUM_SERVERS server key pairs and $NUM_CLIENTS client key pairs
 echo "Keys will be stored in: $OUTPUT_DIR"
 echo ""
 
-# Counter for successful key generations
-success_count=0
+
 
 # Generate server keys
 echo "=== Generating Server Keys ==="
@@ -121,13 +120,6 @@ done
 # Summary
 echo ""
 echo "=== Generation Complete ==="
-echo "Successfully generated: $success_count/$TOTAL_KEYS key pairs"
-echo "  Servers: $NUM_SERVERS"
-echo "  Clients: $NUM_CLIENTS"
 echo "Keys are stored in: $OUTPUT_DIR"
 
-if [ $success_count -eq 0 ]; then
-    echo "WARNING: No keys were successfully generated!"
-    exit 1
-fi
 
