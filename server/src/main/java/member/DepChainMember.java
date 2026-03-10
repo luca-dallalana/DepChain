@@ -38,8 +38,9 @@ public class DepChainMember implements DeliveryListener{
     private final DepChainUtil util;
     private Node currentProposal; // Track leader's proposal
     private int lastExecutedHeight; // Track last executed command height
+    private int timeoutCount = 1; // Track number of timeouts for exponential backoff
 
-    private static final long PHASE_TIMEOUT_MS = 90000; //FIXME this is set to 1 minute for testing, should be lower for real use
+    private static final long PHASE_TIMEOUT_MS = 200;
     private Thread timeoutThread;
 
     public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
@@ -111,26 +112,6 @@ public class DepChainMember implements DeliveryListener{
             }
             ClientRequest clientCmd = new ClientRequest(senderPort, command, sig);
             memberConfig.addPendingCommand(clientCmd);
-            if(curView == 0 && memberConfig.isLeader(curView)) {
-                try {
-                    QC qc = new QC("prepare", curView, nodeTree.getFirstNode(), null);
-                    ClientRequest cmd = memberConfig.getPendingCommands().iterator().next();
-                    Node curProposal = Node.createLeaf(qc.node, cmd);//FIXME add user cmd
-                    this.currentProposal = curProposal; // Store for QC formation
-                    Message prepareMsg = util.voteMsg("prepare", curProposal, qc, curView);
-                    prepareMsg.senderPort = memberConfig.getID() + 3000;
-                    qcManager.addVote(prepareMsg);
-                    //new Thread(() -> {
-                        try {
-                            broadcast(prepareMsg);
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    //}).start();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
             return; 
         }
 
@@ -205,6 +186,7 @@ public class DepChainMember implements DeliveryListener{
         this.receiver = new UdpReceiver(socket, networkLayerLib);
         new Thread(receiver).start();
         startTimeout(); // restart for new-view phase
+        prepareQC = new QC("prepare", 0, nodeTree.getFirstNode(), null); // Initialize prepareQC to genesis QC
     }
 
     private void sendMessage(Message m, String destIp, int destPort) throws java.io.IOException {
@@ -289,7 +271,7 @@ public class DepChainMember implements DeliveryListener{
             }
 
             if (nodeTree.extendsFrom(m.node, m.justify.node) && safeNode(m.node, m.justify)) {
-
+                startTimeout();
                 Message voteMsg = util.voteMsg("prepare", m.node, null, curView);
                 voteMsg.senderPort = memberConfig.getID() + 3000;
 
@@ -343,6 +325,8 @@ public class DepChainMember implements DeliveryListener{
                 sendCatchUpRequest(m.justify.node);
                 curView = m.viewNumber; // Update to higher view
             }
+
+            startTimeout();
 
             nodeTree.storeNode(m.node);
             prepareQC = m.justify;
@@ -399,6 +383,7 @@ public class DepChainMember implements DeliveryListener{
                 sendCatchUpRequest(m.justify.node);
                 curView = m.viewNumber; // Update to higher view
             }
+            startTimeout();
 
             lockedQC = m.justify;
 
@@ -451,6 +436,7 @@ public class DepChainMember implements DeliveryListener{
             curView = m.viewNumber; // Update to higher view
         }
 
+        startTimeout();
         executeNode(m.justify.node);
     }
 
@@ -477,10 +463,14 @@ public class DepChainMember implements DeliveryListener{
         stopTimeout();
         timeoutThread = new Thread(() -> {
             try {
-                Thread.sleep(PHASE_TIMEOUT_MS);
+                System.err.println("Starting timeout for view " + curView + " with timeout count " + timeoutCount);
+                Thread.sleep(PHASE_TIMEOUT_MS * timeoutCount);
                 System.out.println("timeout reached. Proposing new view.");
+                if (timeoutCount < 64) {
+                    timeoutCount *= 2;
+                }
                 proposeNewView();
-            } catch (InterruptedException ignored) {}
+            } catch (InterruptedException ignored) { timeoutCount = 1; } //reset timeout
         });
         timeoutThread.start();
     }

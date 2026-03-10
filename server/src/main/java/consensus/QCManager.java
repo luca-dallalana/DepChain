@@ -96,6 +96,11 @@ public class QCManager {
     public boolean verifyQC(QC qc) {
         try {
 
+            if (qc.node.height == 0 && qc.viewNumber == 0) {
+                System.out.println("Gennesis QC accepted");
+                return true;
+            }
+
             if (qc.signers.size() < memberConfig.getQuorumSize()) {
                 System.out.println("QC verification failed: insufficient signers");
                 return false;

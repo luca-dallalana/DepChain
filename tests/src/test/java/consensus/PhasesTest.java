@@ -275,7 +275,7 @@ public class PhasesTest {
         m.type = "pre-commit";
         m.viewNumber = 0;
         m.node = child;
-        m.justify = new QC("prepare", 0, parent, null); // invalid QC (no valid signature)
+        m.justify = new QC("prepare", 1, parent, null); // invalid QC (no valid signature)
         m.justify.signers = Arrays.asList(0, 1, 2);
         m.senderPort = 3000; // leader for view 0
         
@@ -409,7 +409,7 @@ public class PhasesTest {
         m.type = "commit";
         m.viewNumber = 0;
         m.node = child;
-        m.justify = new QC("pre-commit", 0, parent, null); // invalid QC (no valid signature)
+        m.justify = new QC("pre-commit", 1, parent, null); // invalid QC (no valid signature)
         m.justify.signers = Arrays.asList(0, 1, 2);
         m.senderPort = 3000; // leader for view 0
 

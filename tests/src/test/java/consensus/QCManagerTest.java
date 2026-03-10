@@ -115,7 +115,7 @@ public class QCManagerTest {
     @Test
     public void testQCWithNoSignature() {
         Node fakeNode = new Node(new byte[32], dummyClientRequest(), 0);
-        QC qc = new QC("prepare", 0, fakeNode, null); // No signature
+        QC qc = new QC("prepare", 1, fakeNode, null); // No signature
         qc.signers = Collections.singletonList(0);
         QCManager qcManager = new QCManager(dummyMemberConfig());
         boolean result = qcManager.verifyQC(qc);
@@ -130,7 +130,7 @@ public class QCManagerTest {
     @Test
     public void testQCWithWrongNumberOfSigners() {
         Node fakeNode = new Node(new byte[32], dummyClientRequest(), 0);
-        QC qc = new QC("prepare", 0, fakeNode, new byte[64]);
+        QC qc = new QC("prepare", 1, fakeNode, new byte[64]);
         qc.signers = Arrays.asList(0); // Only one signer
         QCManager qcManager = new QCManager(dummyMemberConfig());
         boolean result = qcManager.verifyQC(qc);
@@ -145,7 +145,7 @@ public class QCManagerTest {
     @Test
     public void testQCWithWrongSignature() {
         Node fakeNode = new Node(new byte[32], dummyClientRequest(), 0);
-        QC qc = new QC("prepare", 0, fakeNode, new byte[64]); // wrong signature
+        QC qc = new QC("prepare", 1, fakeNode, new byte[64]); // wrong signature
         qc.signers = Arrays.asList(0, 1, 2);
         QCManager qcManager = new QCManager(dummyMemberConfig());
         boolean result = qcManager.verifyQC(qc);
