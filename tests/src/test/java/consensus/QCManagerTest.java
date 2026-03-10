@@ -27,7 +27,7 @@ public class QCManagerTest {
         vote1.type = "prepare";
         vote1.viewNumber = 0;
         vote1.node = node;
-        vote1.partialSig = new byte[64]; // fake but non-null
+        vote1.partialSig = new byte[64];
         vote1.senderPort = 3000;
         // Accept first vote
         boolean first = qcManager.addVote(vote1);
@@ -40,9 +40,9 @@ public class QCManagerTest {
         vote2.senderPort = 3000;
         boolean second = qcManager.addVote(vote2);
         if (!second) {
-            System.out.println("-----------------------------------------");
+            System.out.println("-----------------------------------");
             System.out.println("addVote: duplicate sender rejected");
-            System.out.println("-----------------------------------------");
+            System.out.println("-----------------------------------");
         }
         assertFalse(second, "addVote should reject duplicate sender votes");
     }
@@ -60,9 +60,9 @@ public class QCManagerTest {
         vote.senderPort = 3001;
         boolean result = qcManager.addVote(vote);
         if (!result) {
-            System.out.println("-----------------------------------------");
+            System.out.println("-------------------------------------------");
             System.out.println("addVote: invalid partial signature rejected");
-            System.out.println("-----------------------------------------");
+            System.out.println("-------------------------------------------");
         } 
         assertFalse(result, "addVote should reject invalid partial signature");
     }
@@ -83,9 +83,9 @@ public class QCManagerTest {
         vote.justify = invalidQC;
         boolean result = qcManager.addVote(vote);
         if (!result) {
-            System.out.println("-----------------------------------------");
+            System.out.println("-----------------------------------------------------");
             System.out.println("addVote: invalid justify QC rejected in new-view vote");
-            System.out.println("-----------------------------------------");
+            System.out.println("-----------------------------------------------------");
         }
         assertFalse(result, "addVote should reject new-view vote with invalid justify QC");
     }
@@ -120,9 +120,9 @@ public class QCManagerTest {
         QCManager qcManager = new QCManager(dummyMemberConfig());
         boolean result = qcManager.verifyQC(qc);
         if(!result){
-            System.out.println("-----------------------------------------");
-            System.out.println("Invalid, QC has no signature!!!!");
-            System.out.println("-----------------------------------------");
+            System.out.println("-------------------------------------------");
+            System.out.println("verifyQC: QC has no signature, rejected!!!!");
+            System.out.println("-------------------------------------------");
         }
         assertFalse(result, "QC with no signature should not verify");
     }
@@ -135,9 +135,9 @@ public class QCManagerTest {
         QCManager qcManager = new QCManager(dummyMemberConfig());
         boolean result = qcManager.verifyQC(qc);
         if(!result){
-            System.out.println("-------------------------------------------------");
-            System.out.println("Invalid, QC has too few signers!!!!");
-            System.out.println("-------------------------------------------------");
+            System.out.println("----------------------------------------------");
+            System.out.println("verifyQC: QC has too few signers, rejected!!!!");
+            System.out.println("----------------------------------------------");
         }
         assertFalse(result, "QC with too few signers should not verify");
     }
@@ -150,9 +150,9 @@ public class QCManagerTest {
         QCManager qcManager = new QCManager(dummyMemberConfig());
         boolean result = qcManager.verifyQC(qc);
         if(!result){
-            System.out.println("-------------------------------------------------");
-            System.out.println("Invalid, QC has wrong signature!!!!");
-            System.out.println("-------------------------------------------------");
+            System.out.println("----------------------------------------------");
+            System.out.println("verifyQC: QC has wrong signature, rejected!!!!");
+            System.out.println("----------------------------------------------");
         }
         assertFalse(result, "QC with wrong signature should not verify");
     }

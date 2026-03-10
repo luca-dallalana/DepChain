@@ -49,9 +49,9 @@ public class SafeNodeTest {
         boolean result = member.safeNode(child, qc);
 
         if (result) {
-            System.out.println("-----------------------------------------");
-            System.out.println("Node is safe because lockedQC is null and node extends from qc.node");
-            System.out.println("-----------------------------------------");
+            System.out.println("---------------------------------------------------------------------");
+            System.out.println("safeNode: safe because lockedQC is null and node extends from qc.node");
+            System.out.println("---------------------------------------------------------------------");
         } 
         assertTrue(result, "safeNode should return true when lockedQC is null and node extends from qc.node");
     }
@@ -71,9 +71,9 @@ public class SafeNodeTest {
         boolean result = member.safeNode(child, qc);
 
         if (result) {
-            System.out.println("-----------------------------------------");
-            System.out.println("Node is safe because node extends from lockedQC.node");
-            System.out.println("-----------------------------------------");
+            System.out.println("------------------------------------------------------");
+            System.out.println("safeNode: safe because node extends from lockedQC.node");
+            System.out.println("------------------------------------------------------");
         }
         assertTrue(result, "safeNode should return true when node extends from lockedQC.node");
     }
@@ -93,9 +93,9 @@ public class SafeNodeTest {
         boolean result = member.safeNode(child, qc);
 
         if (result) {
-            System.out.println("-----------------------------------------");
-            System.out.println("Node is safe because qc.viewNumber > lockedQC.viewNumber");
-            System.out.println("-----------------------------------------");
+            System.out.println("----------------------------------------------------------");
+            System.out.println("safeNode: safe because qc.viewNumber > lockedQC.viewNumber");
+            System.out.println("----------------------------------------------------------");
         }
         assertTrue(result, "safeNode should return true when qc.viewNumber > lockedQC.viewNumber");
     }
@@ -105,7 +105,7 @@ public class SafeNodeTest {
 
         Node parent = getFirstNode(member); 
         ClientRequest cmd = new ClientRequest(4001, "cmd", new byte[]{1,2,3});
-        Node unrelated = new Node(null, new ClientRequest(0, "", null), 0); // another genesis node, not a descendant
+        Node unrelated = new Node(null, new ClientRequest(0, "", null), 0);
         storeNode(member, unrelated);
         QC lockedQC = new QC("pre-commit", 5, parent, null);
         QC qc = new QC("prepare", 2, unrelated, null); // lower view, unrelated node
@@ -114,9 +114,9 @@ public class SafeNodeTest {
         boolean result = member.safeNode(unrelated, qc);
 
         if (!result) {
-            System.out.println("-----------------------------------------");
-            System.out.println("Node not safe because it doesn't extend from lockedQC.node and qc.viewNumber <= lockedQC.viewNumber");
-            System.out.println("-----------------------------------------");
+            System.out.println("--------------------------------------------------------------------------------------------------------");
+            System.out.println("safeNode: not safe because it doesn't extend from lockedQC.node and qc.viewNumber <= lockedQC.viewNumber");
+            System.out.println("--------------------------------------------------------------------------------------------------------");
         } 
 
         assertFalse(result, "safeNode should return false when node does not extend from lockedQC.node and qc.viewNumber <= lockedQC.viewNumber");
