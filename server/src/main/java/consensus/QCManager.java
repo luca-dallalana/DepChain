@@ -87,7 +87,7 @@ public class QCManager {
         }
 
         byte[] aggregatedSig = signatureService.aggregateSignatures(partialSigs);
-        clearVotesForTypeView(type, viewNumber); // Clear old votes for new view FIXME is this good ? maybe 1 vote will get left behind
+        clearVotesForTypeView(type, viewNumber); // Clear old votes for new view
         QC qc = new QC(type, viewNumber, node, aggregatedSig);
         qc.signers = signerList;
         return qc;

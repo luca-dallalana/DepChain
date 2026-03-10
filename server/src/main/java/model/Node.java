@@ -17,7 +17,7 @@ public class Node {
         this.height = height;
     }
 
-    public byte[] depHash() throws Exception { //FIXME: Nos devias adicionar viewNumber e QC aos hashes
+    public byte[] depHash() throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
         if (parentHash != null) {

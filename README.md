@@ -59,10 +59,10 @@ cd app && mvn exec:java -Dexec.args="1 4"
 - `testHandleCommitReplicaRejects for WrongTypeQC, NullJustify, InvalidSender, InvalidJustifyQC` - Rejects invalid commit messages
 
 **SafeNodeTest:**
-- `testSafeNode_LockedQCNull_ExtendsFrom` - Allows voting when no lock exists and node extends from justify
-- `testSafeNode_LockedQCNotNull_ExtendsFrom` - Allows voting when node extends from locked node (safety)
-- `testSafeNode_LockedQCNotNull_HigherView` - Allows voting when justify view > locked view (liveness)
-- `testSafeNode_LockedQCNotNull_FalseCase` - Rejects voting when node doesn't extend from lock and view isn't higher
+- `testSafeNode_LockedQCNull_ExtendsFrom` - Allows voting when no lockedQC exists and node extends from justify
+- `testSafeNode_LockedQCNotNull_ExtendsFrom` - Allows voting when node extends from lockedQC node (safety)
+- `testSafeNode_LockedQCNotNull_HigherView` - Allows voting when justify view > lockedQC view (liveness)
+- `testSafeNode_LockedQCNotNull_FalseCase` - Rejects voting when node doesn't extend from lockedQC and view isn't higher
 
 **CryptoLibTest:**
 - `testHmacIntegrityFail` - Detects message tampering via HMAC verification failure
