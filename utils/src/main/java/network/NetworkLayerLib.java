@@ -19,7 +19,7 @@ import crypto.CryptoLib;
 
 public class NetworkLayerLib implements ReceiverListener {
 
-    private KeyPair dhKeyPair;
+    private ConcurrentHashMap<Integer, KeyPair> dhKeyPairs = new ConcurrentHashMap<>();
     private DeliveryListener listener;
     private DatagramSocket socket;
     private String PRIVATE_KEY_PATH;
@@ -40,11 +40,6 @@ public class NetworkLayerLib implements ReceiverListener {
         } else {
             int replicaId = socket.getLocalPort() - 3000;
             PRIVATE_KEY_PATH = "../rsa_keys/server_" + replicaId + "/server_" + replicaId + ".privatekey";
-        }
-        try {
-            dhKeyPair = CryptoLib.generateDHKeyPair();
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
@@ -136,7 +131,11 @@ public class NetworkLayerLib implements ReceiverListener {
                     System.out.println("Shared secret already exists for port " + packet.getPort());
                 }
                 try {
-                    sendDHResponse(packet);
+                    if (!dhKeyPairs.containsKey(packet.getPort()) || packet.getPort() > socket.getLocalPort()) {
+                        sendDHResponse(packet);
+                    } else {
+                        sendDHExists(packet);
+                    }
                 } catch (Exception e) {
                     System.out.println("Error generating shared secret: " + e.getMessage());
                 }
@@ -147,7 +146,7 @@ public class NetworkLayerLib implements ReceiverListener {
                 int DHseq = Integer.parseInt(message.split(" ")[4]);
                 int port = packet.getPort();
 
-                if (sharedSecrets.containsKey(packet.getPort())) {
+                if (sharedSecrets.containsKey(packet.getPort()) && message.contains("STOP")) {
                     System.out.println("Shared secret already exists for port " + packet.getPort());
    
                 } else {
@@ -232,22 +231,21 @@ public class NetworkLayerLib implements ReceiverListener {
             System.out.println("Invalid RSA signature in DH request from port " + packet.getPort());
             return;
         }
-
-        synchronized (this.dhKeyPair){
-            if (!sharedSecrets.containsKey(packet.getPort())) {
-                byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
-                KeyFactory kf = KeyFactory.getInstance("DiffieHellman");
-                PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
-                KeyPair keys = CryptoLib.generateDHKeyPairReceiver(pubkey);
-                this.dhKeyPair = keys; // Store our DH key pair for future use
-                byte[] sharedSecret = CryptoLib.computeSharedSecret(keys.getPrivate(), pubkey);
-                SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
-                sharedSecrets.put(packet.getPort(), hmacKey);
-                //System.out.println("---> Shared secret derived and stored for sender " + packet.getPort());
-            }
+  
+        byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
+        KeyFactory kf = KeyFactory.getInstance("DiffieHellman");
+        PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
+        if(!dhKeyPairs.containsKey(packet.getPort())) {
+            KeyPair keys = CryptoLib.generateDHKeyPairReceiver(pubkey);
+            dhKeyPairs.put(packet.getPort(), keys);
         }
+        byte[] sharedSecret = CryptoLib.computeSharedSecret(dhKeyPairs.get(packet.getPort()).getPrivate(), pubkey);
+        SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
+        sharedSecrets.put(packet.getPort(), hmacKey);
+        //System.out.println("---> Shared secret derived and stored for sender " + packet.getPort());
+        
         System.out.println("Sending DH response to " + packet.getPort());
-        String myPubKeyB64 = Base64.getEncoder().encodeToString(dhKeyPair.getPublic().getEncoded());
+        String myPubKeyB64 = Base64.getEncoder().encodeToString(dhKeyPairs.get(packet.getPort()).getPublic().getEncoded());
         String DHresponse= "DH RESP= " + myPubKeyB64 + " SEQ= " + seq + " ";
 
         try {
@@ -263,8 +261,44 @@ public class NetworkLayerLib implements ReceiverListener {
         socket.send(DHresponsePacket);
     }
 
+    public void sendDHExists(DatagramPacket packet) throws Exception {
+        String msg = new String(packet.getData(), 0, packet.getLength());
+        String seq = msg.split(" ")[4];
+
+        if (!verifyRsaSignature(packet, msg)) {
+            System.out.println("Invalid RSA signature in DH request from port " + packet.getPort());
+            return;
+        }   
+        
+        System.out.println("Sending DH Already computed response to " + packet.getPort());
+        
+        String DHresponse= "DH RESP= " + "STOP" + " SEQ= " + seq + " ";
+
+        try {
+            byte[] signature = CryptoLib.sign(DHresponse.getBytes(), PRIVATE_KEY_PATH);
+            String signatureB64 = Base64.getEncoder().encodeToString(signature);
+            DHresponse += "RSA_SIG= " + signatureB64;   
+        } catch (Exception e) {
+            System.out.println("Error signing DH response: " + e.getMessage());
+            return;
+        }
+
+        DatagramPacket DHresponsePacket = new DatagramPacket(DHresponse.getBytes(), DHresponse.getBytes().length, packet.getAddress(), packet.getPort());
+        socket.send(DHresponsePacket);
+    }
+
+
     public void handleDH(String dest, int port, int seq) {
-        byte[] pubKeyBytes = dhKeyPair.getPublic().getEncoded();
+
+        try {
+            if (!dhKeyPairs.containsKey(port)) {
+                dhKeyPairs.put(port, CryptoLib.generateDHKeyPair());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        byte[] pubKeyBytes = dhKeyPairs.get(port).getPublic().getEncoded();
         String pubKeyB64 = Base64.getEncoder().encodeToString(pubKeyBytes);
         String DHrequest = "DH REQ= " + pubKeyB64 + " SEQ= " + seq + " ";
         
@@ -295,7 +329,7 @@ public class NetworkLayerLib implements ReceiverListener {
             byte[] pubKeyBytes = Base64.getDecoder().decode(pubKeyB64);
             PublicKey pubkey = kf.generatePublic(new java.security.spec.X509EncodedKeySpec(pubKeyBytes));
             //System.out.println("WILL COMPUTE SHARED SECRET WITH: " + pubKeyB64);
-            byte[] sharedSecret = CryptoLib.computeSharedSecret(dhKeyPair.getPrivate(), pubkey);
+            byte[] sharedSecret = CryptoLib.computeSharedSecret(dhKeyPairs.get(port).getPrivate(), pubkey);
             SecretKey hmacKey = CryptoLib.deriveHmacKey(sharedSecret);
             sharedSecrets.put(port, hmacKey);
             //System.out.println("---> Shared secret derived and stored for sender " + port);

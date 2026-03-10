@@ -1,6 +1,8 @@
 package model;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import crypto.CryptoLib;
@@ -72,4 +74,26 @@ public class NodeTree {
             return false;
         }
     }
+
+    public List<Node> getNodesUntil(Node node, int height){
+        List<Node> nodeList = new ArrayList<>();
+        Node nextNode = node;
+        while (true) {
+            
+            if (nextNode == null) {
+                break; // No more nodes to execute
+            }
+
+            if (nextNode.height <= height) {
+                break; // Already executed
+            }
+
+            nodeList.add(nextNode);
+
+            Node tmpNode = getNodeByHash(nextNode.parentHash);
+            nextNode = tmpNode;
+        }
+        return nodeList;
+    }
+
 }

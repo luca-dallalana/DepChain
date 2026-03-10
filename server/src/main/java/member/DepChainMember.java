@@ -11,6 +11,7 @@ import com.google.gson.Gson;
 import config.MemberConfig;
 import consensus.QCManager;
 import info.ReplicaInfo;
+import model.CatchUp;
 import model.ClientRequest;
 import model.GsonUtils;
 import model.Message;
@@ -132,6 +133,21 @@ public class DepChainMember implements DeliveryListener{
             }
             return; 
         }
+
+        if (payload.startsWith("CATCH-UP=")) {
+            String json = payload.substring("CATCH-UP=".length()).trim();
+            CatchUp m = GsonUtils.GSON.fromJson(json, CatchUp.class);
+            handleCatchUpRequest(m);
+            return;
+        }
+
+        if (payload.startsWith("CATCH-UP_RESPONSE=")) {
+            String json = payload.substring("CATCH-UP_RESPONSE=".length()).trim();
+            CatchUp m = GsonUtils.GSON.fromJson(json, CatchUp.class);
+            handleCatchUpResponse(m);
+            return;
+        }
+
         Gson gson = GsonUtils.GSON;
         Message m = gson.fromJson(payload, Message.class);
         m.senderPort = senderPort; // Ensure senderPort is set
@@ -168,7 +184,7 @@ public class DepChainMember implements DeliveryListener{
             case "commit":
                 if (memberConfig.isLeader(curView)) {
                     if (qcManager.addVote(m)) {
-                        handleDecideLeader(m);
+                        handleDecideLeader();
                         proposeNewView();
                     }
                 } else {
@@ -205,11 +221,11 @@ public class DepChainMember implements DeliveryListener{
     private void handlePrepare(){
         QC maxQC = getMaxQC();  // Read new-view votes first
         
-        if (maxQC.viewNumber > lockedQC.viewNumber) {
-            // FIXME this node needs to catch up with the node from maxQC before proceeding
-            System.out.println("Received new-view with higher view QC, updating view to " + maxQC.viewNumber); //FIXME should also catch up
-            curView = maxQC.viewNumber; // Update to higher view
+        if (maxQC.viewNumber > prepareQC.viewNumber) {
+            System.out.println("Received a maxQC bigger then my prepareQC" );
+            sendCatchUpRequest(maxQC.node);
         }
+
         // Clear new-view votes to prevent multiple calls to handlePrepare
         qcManager.clearVotesForTypeView("new-view", curView);
         try {
@@ -267,7 +283,8 @@ public class DepChainMember implements DeliveryListener{
             }
             
             if (matchResult == 2) {
-                System.out.println("Received higher view prepare message, updating view to " + m.viewNumber); //FIXME should also catch up
+                System.out.println("Received higher view prepare message, updating view to " + m.viewNumber);
+                sendCatchUpRequest(m.justify.node);
                 curView = m.viewNumber; // Update to higher view
             }
 
@@ -322,7 +339,8 @@ public class DepChainMember implements DeliveryListener{
             }
 
             if (matchResult == 2) {
-                System.out.println("Received higher prepare message, updating view to " + m.viewNumber); //FIXME should also catch up
+                System.out.println("Received higher prepare message, updating view to " + m.viewNumber);
+                sendCatchUpRequest(m.justify.node);
                 curView = m.viewNumber; // Update to higher view
             }
 
@@ -377,8 +395,9 @@ public class DepChainMember implements DeliveryListener{
             }
 
             if (matchResult == 2) {
-                    System.out.println("Received higher view pre-commit message, updating view to " + m.viewNumber); //FIXME should also catch up
-                    curView = m.viewNumber; // Update to higher view
+                System.out.println("Received higher view pre-commit message, updating view to " + m.viewNumber);
+                sendCatchUpRequest(m.justify.node);
+                curView = m.viewNumber; // Update to higher view
             }
 
             lockedQC = m.justify;
@@ -394,7 +413,7 @@ public class DepChainMember implements DeliveryListener{
         }
     }
 
-    private void handleDecideLeader(Message m ) {
+    private void handleDecideLeader() {
         try {
             QC commitQC = qcManager.formQC("commit", curView, currentProposal);
 
@@ -402,26 +421,17 @@ public class DepChainMember implements DeliveryListener{
             decideMsg.senderPort = memberConfig.getID() + 3000;
 
             broadcast(decideMsg);
+            executeNode(commitQC.node);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        if (m.node.cmd.getCommand().equals("NO-OP")) { //FIXME in the future need to check if there are unexecuted commands in the chain before this NO-OP
-            System.out.println("No-Op command decided, not executing");
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            return;
-        }
-        executeNode(m.node);
     }
 
     private void handleDecideReplica(Message m) {
         if (m.justify == null) {
-                System.err.println("Null commitQC in commit message");
-                return;
-            }
+            System.err.println("Null commitQC in commit message");
+            return;
+        }
 
         int matchResult = util.matchingQC(m.justify, "commit", curView); // 0 no match, 1 exact match, 2 same type higher view
 
@@ -436,11 +446,12 @@ public class DepChainMember implements DeliveryListener{
         }
 
         if (matchResult == 2) {
-                System.out.println("Received higher view commit message, updating view to " + m.viewNumber); //FIXME should also catch up
-                curView = m.viewNumber; // Update to higher view
+            System.out.println("Received higher view commit message, updating view to " + m.viewNumber);
+            sendCatchUpRequest(m.justify.node);
+            curView = m.viewNumber; // Update to higher view
         }
 
-        executeNode(m.node);
+        executeNode(m.justify.node);
     }
 
     private QC getMaxQC() { //maybe put this in utils
@@ -502,23 +513,8 @@ public class DepChainMember implements DeliveryListener{
     }
     
     private void executeNode(Node node) {
-        List<Node> cmdToExecute = new ArrayList<>();
-        Node nextNode = node;
-        while (true) {
-            
-            if (nextNode == null) {
-                break; // No more nodes to execute
-            }
-
-            if (nextNode.height <= lastExecutedHeight) { //FIXME should it be only ==?
-                break; // Already executed
-            }
-
-            cmdToExecute.add(nextNode);
-
-            Node tmpNode = nodeTree.getNodeByHash(nextNode.parentHash);
-            nextNode = tmpNode;
-        }
+        List<Node> cmdToExecute = nodeTree.getNodesUntil(node, lastExecutedHeight);
+        
         lastExecutedHeight = node.height;
 
         for (int i = cmdToExecute.size() - 1; i >= 0; i--) { // Execute from lowest height to highest
@@ -526,7 +522,7 @@ public class DepChainMember implements DeliveryListener{
             if (n.cmd.getCommand().equals("NO-OP")) {
                 System.out.println("Executed NO-OP at height " + n.height);
                 try {
-                    Thread.sleep(300); // FIXME this is not perfect
+                    Thread.sleep(3000); // FIXME this is not perfect
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -543,6 +539,68 @@ public class DepChainMember implements DeliveryListener{
                 }
             }
         }
+    }
+
+    private void sendCatchUpRequest(Node receivedNode){
+        String message = "CATCH-UP= "; // we send the whole but only need the height of the lockedQC node to verify
+        CatchUp m = new CatchUp();
+        m.viewNumber = curView;
+        m.lockedQC = lockedQC;
+        m.receivedNode = receivedNode; // the node that the sender of the catch-up message is currently at (the one he sent me in justify)
+        m.senderPort = memberConfig.getID() + 3000;
+        String json = GsonUtils.GSON.toJson(m);
+        message += json;
+        
+        try {
+            networkLayerLib.alpSend(message, "localhost", m.senderPort);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    
+    private void handleCatchUpRequest(CatchUp msg){
+        System.out.println("Received catch-up message with lockedQC: " + msg.lockedQC + " from sender " + msg.senderPort);
+        
+        if (msg.lockedQC == null || !qcManager.verifyQC(msg.lockedQC)) {
+            System.err.println("Invalid QC in catch-up message");
+            return;
+        }
+        List<Node> nodesToCatchUp = nodeTree.getNodesUntil(msg.receivedNode, msg.lockedQC.node.height);
+       
+        String message = "CATCH-UP_RESPONSE= ";
+
+        CatchUp response = new CatchUp();
+        response.viewNumber = curView;
+        response.nodeList = nodesToCatchUp;
+        response.senderPort = memberConfig.getID() + 3000;
+
+        String json = GsonUtils.GSON.toJson(response);
+        message += json;
+        
+        try {
+            networkLayerLib.alpSend(message, "localhost", msg.senderPort);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private void handleCatchUpResponse(CatchUp msg){
+        List<Node> nodeList = msg.nodeList;
+        for (int i = nodeList.size() - 1; i >= 0; i--) { // Execute from lowest height to highest
+            Node n = nodeList.get(i);
+            try {
+                if (nodeTree.getNodeByHash(n.depHash()) == null) {
+                    System.out.println("Storing catch-up node at height " + n.height + ": " + n);
+                    nodeTree.storeNode(n);
+                } else {
+                    System.out.println("Node already exists in tree, skipping store for node at height " + n.height + ": " + n);
+                }
+            } catch (Exception e) {
+                System.out.println("Error storing catch-up node: " + e.getMessage());
+            }
+        }
+        System.out.println("Updated node tree with catch-up nodes, now at height " + nodeList.get(0).height);
     }
 
 }
