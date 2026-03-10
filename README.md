@@ -14,10 +14,10 @@
 cd utils && mvn exec:java -Dexec.mainClass=crypto.BLSKeys -Dexec.args="N"
 
 # 2. Start 4 replicas (separate terminals)
-cd server && mvn exec:java -Dexec.args="0 N"  # switch 0 and repeat for IDs 1,2,3... N
+cd server && mvn exec:java -Dexec.args="id N"  # switch id and repeat for IDs 0,1,2,3... N
 
 # 3. Start client
-cd app && mvn exec:java -Dexec.args="0 4"
+cd app && mvn exec:java -Dexec.args="id N" # switch id and repeat for IDs 0,1,2,3... N
 ```
 
 ## Running Tests
@@ -39,8 +39,9 @@ cd server && mvn exec:java -Dexec.args="1 4"
 cd server && mvn exec:java -Dexec.args="2 4"  
 cd server && mvn exec:java -Dexec.args="3 4"  
 
-# Open another terminal
+# Open 2 other terminals
 cd app && mvn exec:java -Dexec.args="0 4"
+cd app && mvn exec:java -Dexec.args="1 4"
 ```
 ## Test Descriptions
 
