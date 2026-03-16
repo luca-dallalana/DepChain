@@ -9,6 +9,12 @@
     </parent>
     <artifactId>server</artifactId>
     <packaging>jar</packaging>
+    <repositories>
+        <repository>
+            <id>hyperledger-besu</id>
+            <url>https://hyperledger.jfrog.io/artifactory/besu-maven/</url>
+        </repository>
+    </repositories>
     <dependencies>
         <dependency>
             <groupId>com.example</groupId>
@@ -21,6 +27,45 @@
             <artifactId>gson</artifactId>
             <version>2.10.1</version>
         </dependency>
+        <!-- Hyperledger Besu EVM for smart contract execution -->
+        <dependency>
+            <groupId>org.hyperledger.besu</groupId>
+            <artifactId>evm</artifactId>
+            <version>25.2.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hyperledger.besu</groupId>
+            <artifactId>besu-datatypes</artifactId>
+            <version>25.2.1</version>
+        </dependency>
+        <!-- Apache Tuweni for byte handling -->
+        <dependency>
+            <groupId>org.apache.tuweni</groupId>
+            <artifactId>tuweni-bytes</artifactId>
+            <version>2.3.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.tuweni</groupId>
+            <artifactId>tuweni-units</artifactId>
+            <version>2.3.1</version>
+        </dependency>
+        <!-- Web3j for ABI encoding -->
+        <dependency>
+            <groupId>org.web3j</groupId>
+            <artifactId>crypto</artifactId>
+            <version>5.0.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.web3j</groupId>
+            <artifactId>abi</artifactId>
+            <version>5.0.2</version>
+        </dependency>
+        <!-- SLF4J (required by Besu) -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>2.0.17</version>
+        </dependency>
     </dependencies>
     <build>
         <sourceDirectory>src/main/java</sourceDirectory>
@@ -30,8 +75,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.8.1</version>
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <source>11</source>
+                    <target>11</target>
                 </configuration>
             </plugin>
             <plugin>
@@ -39,7 +84,8 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
                 <configuration>
-                    <mainClass>Main</mainClass>
+                    <mainClass>blockchain.ISTCoinTest</mainClass>
+                    <classpathScope>test</classpathScope>
                 </configuration>
             </plugin>
         </plugins>
