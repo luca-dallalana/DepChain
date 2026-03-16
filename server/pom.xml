@@ -83,6 +83,31 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
+                <executions>
+                    <!-- Compile Solidity contracts automatically -->
+                    <execution>
+                        <id>compile-solidity</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>solc</executable>
+                            <workingDirectory>${project.basedir}/src/main/resources/contracts</workingDirectory>
+                            <arguments>
+                                <argument>--optimize</argument>
+                                <argument>--bin</argument>
+                                <argument>--overwrite</argument>
+                                <argument>--evm-version</argument>
+                                <argument>cancun</argument>
+                                <argument>-o</argument>
+                                <argument>bytecode/</argument>
+                                <argument>AccessControl.sol</argument>
+                                <argument>ISTCoin.sol</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
                 <configuration>
                     <mainClass>blockchain.ISTCoinTest</mainClass>
                     <classpathScope>test</classpathScope>
