@@ -60,10 +60,8 @@ public class Client implements DeliveryListener{
                 try {
                     sendMessage(message);
                     while (!decided) {
-                        Thread.sleep(100); // Wait 2F+1 responses
+                        Thread.sleep(100); // Wait F+1 identical responses
                     }
-                    String mostCommon = getMostCommonDecided();
-                    System.out.println("The command: " + mostCommon + " was decided.");
                     decided = false; // reset for next command
                     receivedDecided.clear();
                 } catch (Exception e) {
@@ -115,17 +113,11 @@ public class Client implements DeliveryListener{
         receivedDecided.put(port, command);
         long count = receivedDecided.values().stream()
             .filter(c -> c.equals(command)).count();
-        if (count >= config.getF() + 1) decided = true;
+        if (count >= config.getF() + 1){
+            decided = true;
+            System.out.println("The command: " + command + " was decided.");
+        }
         
-    }
-
-    private String getMostCommonDecided() {
-        return receivedDecided.values().stream()
-            .collect(java.util.stream.Collectors.groupingBy(cmd -> cmd, java.util.stream.Collectors.counting()))
-            .entrySet().stream()
-            .max(java.util.Map.Entry.comparingByValue())
-            .map(java.util.Map.Entry::getKey)
-            .orElse(null);
     }
 
 }
