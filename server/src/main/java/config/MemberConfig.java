@@ -16,6 +16,7 @@ public class MemberConfig {
     private final int F;                                    // Byzantine fault tolerance
     private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>();
     private Set<ClientRequest> pendingCommands = ConcurrentHashMap.newKeySet(); // Commands to be executed
+    private ConcurrentHashMap<Integer, Integer> ClientsLastSequence = new ConcurrentHashMap<>(); // Track last request sequence number for each client maps client port -> lastSequenceNumber
     private byte[] blsPrivateKey;
     private List<byte[]> allPublicKeys;
     private List<String> appState = new ArrayList<>();
@@ -117,4 +118,18 @@ public class MemberConfig {
     public void addToAppState(String command) {
         this.appState.add(command);
     }
+
+    public int getLastSequenceForClient(int clientPort) {
+        return ClientsLastSequence.getOrDefault(clientPort, 0);
+    }
+
+    public void setLastSequenceForClient(int clientPort, int sequenceNumber) {
+        ClientsLastSequence.put(clientPort, sequenceNumber);
+    }
+
+    public boolean isDuplicateRequest(ClientRequest request) {
+        int lastSeq = getLastSequenceForClient(request.getPort());
+        return request.getSeq() <= lastSeq;
+    }
+
 }

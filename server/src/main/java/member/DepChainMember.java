@@ -95,8 +95,8 @@ public class DepChainMember implements DeliveryListener{
                 System.err.println("No signature found for client command in message, ignoring");
                 return;
             }
-            String command = payload.substring("NewCommand=".length(), sigIndex).trim();
-            System.out.println("Received new command: " + command);
+            String request = payload.substring("NewCommand=".length(), sigIndex).trim();
+            System.out.println("Received new command: " + request);
             String sigB64 = payload.substring(sigIndex + 4).trim();
             byte[] sig;
             try {
@@ -110,7 +110,11 @@ public class DepChainMember implements DeliveryListener{
                 System.err.println("Command received is not from a client, ignoring");
                 return;
             }
-            ClientRequest clientCmd = new ClientRequest(senderPort, command, sig);
+            String[] parts = request.split(":");
+            int seq = Integer.parseInt(parts[0]);
+            String command = parts[1];
+
+            ClientRequest clientCmd = new ClientRequest(seq, senderPort, command, sig);
             memberConfig.addPendingCommand(clientCmd);
             return; 
         }
@@ -215,7 +219,7 @@ public class DepChainMember implements DeliveryListener{
 
             if (memberConfig.getPendingCommands().isEmpty()) {
                 System.out.println("No pending client commands, proposing NO-OP");
-                ClientRequest noOpCmd = new ClientRequest(-1, "NO-OP",null);
+                ClientRequest noOpCmd = new ClientRequest(-1, -1, "NO-OP",null);
                 curProposal = Node.createLeaf(maxQC.node, noOpCmd);
             } else {
                 System.out.println("Processing pending client command " + memberConfig.getPendingCommands());
@@ -245,13 +249,21 @@ public class DepChainMember implements DeliveryListener{
             }
             byte[] sig = m.node.cmd.getSig();
             String command = m.node.cmd.getCommand();
+            int seq = m.node.cmd.getSeq();
             int senderId = m.node.cmd.getPort() - 4000;
             String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
 
-            if(!command.equals("NO-OP") && !CryptoLib.verifySignature(command.getBytes(), sig, PUBLIC_KEY_PATH)){
+            String fullCommand =  seq + ":" + command; // reconstruct full command for signature verification
+            if(!command.equals("NO-OP") && !CryptoLib.verifySignature(fullCommand.getBytes(), sig, PUBLIC_KEY_PATH)){
                 System.err.println("Invalid signature for client command in prepare message, ignoring");
                 return;
             }
+
+            if(!command.equals("NO-OP") && memberConfig.isDuplicateRequest(m.node.cmd)) {
+                System.err.println("Duplicate client command in prepare message, ignoring");
+                return;
+            }
+
             int matchResult = util.matchingMsg(m, curView); // 0 lower view, 1 exact match, 2 same type higher view
 
             if (matchResult == 0 || !cameFromLeader(m, m.viewNumber)) {
@@ -517,6 +529,11 @@ public class DepChainMember implements DeliveryListener{
                     e.printStackTrace();
                 }
             } else {
+                if (memberConfig.isDuplicateRequest(n.cmd)) {
+                    System.out.println("Skipping duplicate command at height " + n.height + ": " + n.cmd.getCommand());
+                    continue;
+                }
+                memberConfig.setLastSequenceForClient(n.cmd.getPort(), n.cmd.getSeq());
                 System.out.println("Executed command at height " + n.height + ": " + n.cmd.getCommand() + " sending back to client " + n.cmd.getPort());
                 memberConfig.addToAppState(n.cmd.getCommand());
                 memberConfig.removePendingCommand(n.cmd);

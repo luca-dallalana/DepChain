@@ -96,7 +96,7 @@ public class QCManagerTest {
         return b;
     }
     private static ClientRequest dummyClientRequest() {
-        return new ClientRequest(0, "dummy", new byte[0]);
+        return new ClientRequest(1, 0, "dummy", new byte[0]);
     }
 
     private static MemberConfig dummyMemberConfig() {

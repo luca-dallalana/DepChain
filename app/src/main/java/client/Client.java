@@ -56,7 +56,7 @@ public class Client implements DeliveryListener{
                 break;
             } else if (input.startsWith("send ")) {
                 sequenceNumber++;
-                String message = sequenceNumber + " " + input.substring(5);
+                String message = sequenceNumber + ":" + input.substring(5);
                 try {
                     sendMessage(message);
                     while (!decided) {

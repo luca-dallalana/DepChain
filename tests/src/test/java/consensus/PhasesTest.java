@@ -60,7 +60,7 @@ public class PhasesTest {
     
         Node parent = getFirstNode();
         byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(4001, "cmd", fakeSig);
+        ClientRequest cmd = new ClientRequest(1,4001, "cmd", fakeSig);
         Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "prepare";
@@ -94,8 +94,9 @@ public class PhasesTest {
         Node parent = getFirstNode();
         String command = "cmd";
         String PRIVATE_KEY_PATH = "../rsa_keys/client_1/client_1.privatekey";
-        byte[] validSig = crypto.CryptoLib.sign(command.getBytes(), PRIVATE_KEY_PATH);
-        ClientRequest cmd = new ClientRequest(4001, command, validSig);
+        String message = "1:" + command;
+        byte[] validSig = crypto.CryptoLib.sign(message.getBytes(), PRIVATE_KEY_PATH);
+        ClientRequest cmd = new ClientRequest(1,4001, command, validSig);
         Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "prepare";
@@ -133,8 +134,9 @@ public class PhasesTest {
         Node parent = getFirstNode();
         String command = "cmd";
         String PRIVATE_KEY_PATH = "../rsa_keys/client_1/client_1.privatekey";
-        byte[] validSig = crypto.CryptoLib.sign(command.getBytes(), PRIVATE_KEY_PATH);
-        ClientRequest cmd = new ClientRequest(4001, command, validSig);
+        String message = "1:" + command;
+        byte[] validSig = crypto.CryptoLib.sign(message.getBytes(), PRIVATE_KEY_PATH);
+        ClientRequest cmd = new ClientRequest(1,4001, command, validSig);
         Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "prepare";
@@ -167,7 +169,7 @@ public class PhasesTest {
 
         Node parent = getFirstNode();
         byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(4001, "cmd", fakeSig);
+        ClientRequest cmd = new ClientRequest(1,4001, "cmd", fakeSig);
         Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "prepare";
@@ -235,7 +237,7 @@ public class PhasesTest {
         
         Node parent = getFirstNode();
         byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(4001, "cmd", fakeSig);
+        ClientRequest cmd = new ClientRequest(1,4001, "cmd", fakeSig);
         Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "pre-commit";
@@ -269,7 +271,7 @@ public class PhasesTest {
         
         Node parent = getFirstNode();
         byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(4001, "cmd", fakeSig);
+        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", fakeSig);
         Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "pre-commit";
@@ -304,7 +306,7 @@ public class PhasesTest {
 
         Node parent = getFirstNode();
         byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(4001, "cmd", fakeSig);
+        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", fakeSig);
         Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "pre-commit";
@@ -369,7 +371,7 @@ public class PhasesTest {
 
         Node parent = getFirstNode();
         byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(4001, "cmd", fakeSig);
+        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", fakeSig);
         Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "commit";
@@ -403,7 +405,7 @@ public class PhasesTest {
 
         Node parent = getFirstNode();
         byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(4001, "cmd", fakeSig);
+        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", fakeSig);
         Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "commit";

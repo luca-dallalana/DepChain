@@ -41,7 +41,7 @@ public class SafeNodeTest {
     public void testSafeNode_LockedQCNull_ExtendsFrom() throws Exception {
 
         Node parent = getFirstNode(member); 
-        ClientRequest cmd = new ClientRequest(4001, "cmd", new byte[]{1,2,3});
+        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", new byte[]{1,2,3});
         Node child = Node.createLeaf(parent, cmd);
         storeNode(member, child);
         QC qc = new QC("prepare", 0, parent, null);
@@ -61,7 +61,7 @@ public class SafeNodeTest {
     public void testSafeNode_LockedQCNotNull_ExtendsFrom() throws Exception {
 
         Node parent = getFirstNode(member); 
-        ClientRequest cmd = new ClientRequest(4001, "cmd", new byte[]{1,2,3});
+        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", new byte[]{1,2,3});
         Node child = Node.createLeaf(parent, cmd);
         storeNode(member, child);
         QC lockedQC = new QC("pre-commit", 0, parent, null);
@@ -83,7 +83,7 @@ public class SafeNodeTest {
     public void testSafeNode_LockedQCNotNull_HigherView() throws Exception {
 
         Node parent = getFirstNode(member); 
-        ClientRequest cmd = new ClientRequest(4001, "cmd", new byte[]{1,2,3});
+        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", new byte[]{1,2,3});
         Node child = Node.createLeaf(parent, cmd);
         storeNode(member, child);
         QC lockedQC = new QC("pre-commit", 0, parent, null);
@@ -104,8 +104,8 @@ public class SafeNodeTest {
     public void testSafeNode_LockedQCNotNull_FalseCase() throws Exception {
 
         Node parent = getFirstNode(member); 
-        ClientRequest cmd = new ClientRequest(4001, "cmd", new byte[]{1,2,3});
-        Node unrelated = new Node(null, new ClientRequest(0, "", null), 0);
+        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", new byte[]{1,2,3});
+        Node unrelated = new Node(null, new ClientRequest(1, 0, "", null), 0);
         storeNode(member, unrelated);
         QC lockedQC = new QC("pre-commit", 5, parent, null);
         QC qc = new QC("prepare", 2, unrelated, null); // lower view, unrelated node

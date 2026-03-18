@@ -16,7 +16,7 @@ public class NodeTree {
     public NodeTree() {
         this.nodeStore = new ConcurrentHashMap<>();
 
-        this.firstNode = new Node(null, new ClientRequest(0, "", null), 0);
+        this.firstNode = new Node(null, new ClientRequest(0, 0, "", null), 0);
         try {
             storeNode(firstNode);
         } catch (Exception e) {
