@@ -19,6 +19,7 @@ public class Client implements DeliveryListener{
     private UdpReceiver receiver;
     private ConcurrentHashMap<Integer, String> receivedDecided = new ConcurrentHashMap<>(); //maps port -> decided command
     private boolean decided = false;
+    private int sequenceNumber = 0;
 
     public Client(ClientConfig config, DatagramSocket socket) {
         this.config = config;
@@ -54,7 +55,8 @@ public class Client implements DeliveryListener{
             if (input.equalsIgnoreCase("exit")) {
                 break;
             } else if (input.startsWith("send ")) {
-                String message = input.substring(5);
+                sequenceNumber++;
+                String message = sequenceNumber + " " + input.substring(5);
                 try {
                     sendMessage(message);
                     while (!decided) {
@@ -109,14 +111,11 @@ public class Client implements DeliveryListener{
     }
 
     private void addDecidedCommand(int port, String command) {
-        if (receivedDecided.containsKey(port)) {
-            return; // already have a decided command for this port
-        }
+        if (receivedDecided.containsKey(port)) return;
         receivedDecided.put(port, command);
-        if (receivedDecided.size() >= config.getQuorumSize()) {
-            decided = true;
-            System.out.println("Received decided commands from quorum: " + receivedDecided);
-        }
+        long count = receivedDecided.values().stream()
+            .filter(c -> c.equals(command)).count();
+        if (count >= config.getF() + 1) decided = true;
         
     }
 
