@@ -2,7 +2,6 @@ package member;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
@@ -10,6 +9,7 @@ import com.google.gson.Gson;
 
 import config.MemberConfig;
 import consensus.QCManager;
+import crypto.CryptoLib;
 import info.ReplicaInfo;
 import model.CatchUp;
 import model.ClientRequest;
@@ -22,7 +22,6 @@ import network.DeliveryListener;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
 import util.DepChainUtil;
-import crypto.CryptoLib;
 public class DepChainMember implements DeliveryListener{
     private NetworkLayerLib networkLayerLib;
     private int curView;          // current view number
@@ -245,6 +244,7 @@ public class DepChainMember implements DeliveryListener{
 
             if (m.justify == null) {
                 System.err.println("Null new-view maxQC in prepare message");
+                proposeNewView();
                 return;
             }
             byte[] sig = m.node.cmd.getSig();
@@ -256,11 +256,13 @@ public class DepChainMember implements DeliveryListener{
             String fullCommand =  seq + ":" + command; // reconstruct full command for signature verification
             if(!command.equals("NO-OP") && !CryptoLib.verifySignature(fullCommand.getBytes(), sig, PUBLIC_KEY_PATH)){
                 System.err.println("Invalid signature for client command in prepare message, ignoring");
+                proposeNewView();
                 return;
             }
 
             if(!command.equals("NO-OP") && memberConfig.isDuplicateRequest(m.node.cmd)) {
                 System.err.println("Duplicate client command in prepare message, ignoring");
+                proposeNewView();
                 return;
             }
 
@@ -273,6 +275,7 @@ public class DepChainMember implements DeliveryListener{
 
             if (curView != 0 && !qcManager.verifyQC(m.justify)) {
                 System.err.println("Invalid justify QC in prepare message");
+                proposeNewView();
                 return;
             }
             
@@ -316,6 +319,7 @@ public class DepChainMember implements DeliveryListener{
             // Verify the prepareQC
             if (m.justify == null) {
                 System.err.println("Null prepareQC in pre-commit message");
+                proposeNewView();
                 return;
             }
 
@@ -329,6 +333,7 @@ public class DepChainMember implements DeliveryListener{
             if (!qcManager.verifyQC(m.justify)){
                 System.err.println("Invalid prepareQC in pre-commit message");
                 System.out.println("justify view: " + m.justify.viewNumber + " current view: " + curView);
+                proposeNewView();
                 return;
             }
 
@@ -375,6 +380,7 @@ public class DepChainMember implements DeliveryListener{
 
             if (m.justify == null) {
                 System.err.println("Null precommitQC in commit message");
+                proposeNewView();
                 return;
             }
 
@@ -387,6 +393,7 @@ public class DepChainMember implements DeliveryListener{
 
             if (!qcManager.verifyQC(m.justify)) {
                 System.err.println("Invalid precommitQC in commit message");
+                proposeNewView();
                 return;
             }
 
@@ -427,6 +434,7 @@ public class DepChainMember implements DeliveryListener{
     private void handleDecideReplica(Message m) {
         if (m.justify == null) {
             System.err.println("Null commitQC in commit message");
+            proposeNewView();
             return;
         }
 
@@ -439,6 +447,7 @@ public class DepChainMember implements DeliveryListener{
 
         if (!qcManager.verifyQC(m.justify)) {
             System.err.println("Invalid commitQC in commit message");
+            proposeNewView();
             return;
         }
 
