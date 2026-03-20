@@ -1,4 +1,4 @@
-package model;
+package network;
 
 import java.io.IOException;
 import java.util.Base64;

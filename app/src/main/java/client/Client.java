@@ -4,10 +4,12 @@ import java.util.Base64;
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 
+import blockchain.TransactionRequest;
 import config.ClientConfig;
 import crypto.CryptoLib;
 import info.ReplicaInfo;
 import network.DeliveryListener;
+import network.GsonUtils;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
 
@@ -38,50 +40,84 @@ public class Client implements DeliveryListener{
         
         System.out.println("\n=========== Client ==========");
         System.out.println("Commands:");
-        System.out.println("  send <message> - Send a message to the server");
-        System.out.println("  exit           - Exit the client");
-        System.out.println("===================================\n");
-        
+        System.out.println("  0 - Transfer");
+        System.out.println("  1 - TransferFrom");
+        System.out.println("  2 - Exit");
+        System.out.println("===============================\n");
+
         Scanner scanner = new Scanner(System.in);
         while (this.running) {
-       
             System.out.print("> ");
             String input = scanner.nextLine().trim();
-            
-            if (input.isEmpty()) {
-                continue;
-            }
-            
-            if (input.equalsIgnoreCase("exit")) {
-                break;
-            } else if (input.startsWith("send ")) {
-                sequenceNumber++;
-                String message = sequenceNumber + ":" + input.substring(5);
-                try {
-                    sendMessage(message);
-                    while (!decided) {
-                        Thread.sleep(100); // Wait F+1 identical responses
+            if (input.isEmpty()) continue;
+            switch (input) {
+                case "2":
+                    scanner.close();
+                    return;
+                case "0":
+                    // Transfer
+                    System.out.print("Enter recipient: ");
+                    String to = scanner.nextLine().trim();
+                    System.out.print("Enter value: ");
+                    String value = scanner.nextLine().trim();
+                    System.out.print("Enter gasLimit: ");
+                    String gasLimit = scanner.nextLine().trim();
+                    System.out.print("Enter gasPrice: ");
+                    String gasPrice = scanner.nextLine().trim();
+                    sequenceNumber++;
+                    TransactionRequest transferRequest = new TransactionRequest(config.getID(), Integer.parseInt(to), Long.parseLong(value), Long.parseLong(gasLimit), Long.parseLong(gasPrice), sequenceNumber, null);
+                    try {
+                        sendMessage(transferRequest);
+                        while (!decided) {
+                            Thread.sleep(100);
+                        }
+                        decided = false;
+                        receivedDecided.clear();
+                    } catch (Exception e) {
+                        System.err.println("Error sending transfer: " + e.getMessage());
                     }
-                    decided = false; // reset for next command
-                    receivedDecided.clear();
-                } catch (Exception e) {
-                    System.err.println("Error sending message: " + e.getMessage());
-                }
-            } else {
-                System.out.println("Unknown command. Try 'send <message>' or 'exit'");
+                    break;
+                case "1": 
+                    // TransferFrom
+                    System.out.print("Enter account owner: ");
+                    String fromTF = scanner.nextLine().trim();
+                    System.out.print("Enter recipient: ");
+                    String toTF = scanner.nextLine().trim();
+                    System.out.print("Enter value: ");
+                    String valueTF = scanner.nextLine().trim();
+                    System.out.print("Enter gasLimit: ");
+                    String gasLimitTF = scanner.nextLine().trim();
+                    System.out.print("Enter gasPrice: ");
+                    String gasPriceTF = scanner.nextLine().trim();
+                    sequenceNumber++;
+                    TransactionRequest transferFromRequest = new TransactionRequest(Integer.parseInt(fromTF), Integer.parseInt(toTF), Long.parseLong(valueTF), Long.parseLong(gasLimitTF), Long.parseLong(gasPriceTF), sequenceNumber, null);
+                    try {
+                        sendMessage(transferFromRequest);
+                        while (!decided) {
+                            Thread.sleep(100);
+                        }
+                        decided = false;
+                        receivedDecided.clear();
+                    } catch (Exception e) {
+                        System.err.println("Error sending transferFrom: " + e.getMessage());
+                    }
+                    break;
+                default:
+                    System.out.println("Unknown command. Try 0 (Transfer), 1 (TransferFrom), or 2 (Exit)");
             }
-           
         }
-        scanner.close();
     }
-    private void sendMessage(String m) throws java.io.IOException {
-        String packet = "NewCommand=" + m;
-        byte[] signature;
+    private void sendMessage(TransactionRequest request) throws java.io.IOException {
+        String packet = "NewCommand=";
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
         try {
-            signature = CryptoLib.sign(m.getBytes(), PRIVATE_KEY_PATH);
+            String unsignedJson = GsonUtils.GSON.toJson(request);
+            byte[] signature = CryptoLib.sign(unsignedJson.getBytes(), PRIVATE_KEY_PATH);
             String signatureB64 = Base64.getEncoder().encodeToString(signature);
-            packet += "SIG=" + signatureB64;
+            request.signature = signatureB64;
+            String json = GsonUtils.GSON.toJson(request);
+            System.out.println("Sending JSON: " + json);
+            packet += json;
         } catch (Exception e) {
             e.printStackTrace();
         }
