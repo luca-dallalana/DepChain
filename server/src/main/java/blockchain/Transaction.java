@@ -31,4 +31,14 @@ public class Transaction {
     public long getMaxTransactionFee() {
         return gasPrice * gasLimit;
     }
+
+    // Getters
+    public String getFrom() { return from; }
+    public String getTo() { return to; }
+    public long getValue() { return value; }
+    public byte[] getInput() { return input; }
+    public long getGasLimit() { return gasLimit; }
+    public long getGasPrice() { return gasPrice; }
+    public long getNonce() { return nonce_count; }
+    public byte[] getSignature() { return signature; }
 }

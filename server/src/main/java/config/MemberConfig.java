@@ -1,12 +1,13 @@
 package config;
 
 import java.security.PublicKey;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
+import blockchain.Account;
+import blockchain.Transaction;
+import blockchain.WorldState;
 import info.ReplicaInfo;
 import model.ClientRequest;
 
@@ -130,6 +131,44 @@ public class MemberConfig {
     public boolean isDuplicateRequest(ClientRequest request) {
         int lastSeq = getLastSequenceForClient(request.getPort());
         return request.getSeq() <= lastSeq;
+    }
+
+    public List<Transaction> orderTransactionsForBlock(List<Transaction> transactions) {
+        Map<String, Queue<Transaction>> bySender = new HashMap<>();
+
+        for (Transaction tx : transactions) {
+            bySender.computeIfAbsent(tx.getFrom(), k -> new LinkedList<>()).add(tx);
+        }
+
+        for (Queue<Transaction> queue : bySender.values()) {
+            ((LinkedList<Transaction>) queue).sort((a, b) -> Long.compare(a.getNonce(), b.getNonce()));
+        }
+
+        List<Transaction> ordered = new ArrayList<>();
+
+        while (!bySender.isEmpty() && ordered.size() < 10) { //FIXME: limit block size to 10 transactions for simplicity
+            String bestSender = null;
+            long highestGasPrice = -1;
+
+            for (Map.Entry<String, Queue<Transaction>> entry : bySender.entrySet()) {
+                long gasPrice = entry.getValue().peek().getGasPrice();
+                if (gasPrice > highestGasPrice) {
+                    highestGasPrice = gasPrice;
+                    bestSender = entry.getKey();
+                }
+            }
+
+            if (bestSender != null) {
+                Transaction tx = bySender.get(bestSender).poll();
+                ordered.add(tx);
+
+                if (bySender.get(bestSender).isEmpty()) {
+                    bySender.remove(bestSender);
+                }
+            }
+        }
+
+        return ordered;
     }
 
 }

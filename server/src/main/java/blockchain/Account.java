@@ -14,4 +14,9 @@ public abstract class Account {
     public Account() {}  // For GSON
 
     public abstract boolean isContract();
+
+    // Getters
+    public String getAddress() { return address; }
+    public long getBalance() { return balance; }
+    public long getNonce() { return nonce_count; }
 }
