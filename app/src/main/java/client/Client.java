@@ -113,8 +113,7 @@ public class Client implements DeliveryListener{
         try {
             String unsignedJson = GsonUtils.GSON.toJson(request);
             byte[] signature = CryptoLib.sign(unsignedJson.getBytes(), PRIVATE_KEY_PATH);
-            String signatureB64 = Base64.getEncoder().encodeToString(signature);
-            request.signature = signatureB64;
+            request.signature = signature;
             String json = GsonUtils.GSON.toJson(request);
             System.out.println("Sending JSON: " + json);
             packet += json;

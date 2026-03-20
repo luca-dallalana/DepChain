@@ -15,12 +15,19 @@ public class BlockchainMember {
 
     // Consensus calls this to get the next block to propose
     public Block buildBlock(List<Transaction> pendingTxs){
-        return null; // Implement block building logic (e.g., select txs, execute them, update state)
+        List<Transaction> orderedTxs = orderTransactionsForBlock(pendingTxs);
+        return new Block();
     }
 
     // Consensus calls this to validate a proposed block before voting
     public boolean isValidBlock(Block block){
         return true; // Implement block validation logic (e.g., check txs, state transitions)
+    }
+
+    public static Transaction createTransaction(TransactionRequest request) {
+        // from = getaddress(request.from)
+        // to = getaddress(request.to)
+        return new Transaction();
     }
 
     public List<Transaction> orderTransactionsForBlock(List<Transaction> transactions) {

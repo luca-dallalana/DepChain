@@ -5,6 +5,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import info.ReplicaInfo;
 import model.ClientRequest;
+import blockchain.Transaction;
 
 public class MemberConfig {
     private final int ID;               // This replica's ID
@@ -13,6 +14,7 @@ public class MemberConfig {
     private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>();
     private Set<ClientRequest> pendingCommands = ConcurrentHashMap.newKeySet(); // Commands to be executed
     private ConcurrentHashMap<Integer, Integer> ClientsLastSequence = new ConcurrentHashMap<>(); // Track last request sequence number for each client maps client port -> lastSequenceNumber
+    private List<Transaction> pendingTransactions = new ArrayList<>(); // Transactions to be included in blocks
     private byte[] blsPrivateKey;
     private List<byte[]> allPublicKeys;
     private List<String> appState = new ArrayList<>();
@@ -93,6 +95,19 @@ public class MemberConfig {
     public void removePendingCommand(ClientRequest command) {
         this.pendingCommands.remove(command);
     }
+
+    public List<Transaction> getPendingTransactions() {
+        return pendingTransactions;
+    }
+
+    public void addPendingTransaction(Transaction transaction) {
+        this.pendingTransactions.add(transaction);
+    }
+
+    public void removePendingTransaction(Transaction transaction) {
+        this.pendingTransactions.remove(transaction);
+    }
+
 
     public void initializeBLSKeys(byte[] privateKey, List<byte[]> allPublicKeys) {
         this.blsPrivateKey = privateKey;

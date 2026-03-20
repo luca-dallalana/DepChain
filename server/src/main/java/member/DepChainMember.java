@@ -7,6 +7,9 @@ import java.util.List;
 
 import com.google.gson.Gson;
 
+import blockchain.BlockchainMember;
+import blockchain.Transaction;
+import blockchain.TransactionRequest;
 import config.MemberConfig;
 import consensus.QCManager;
 import crypto.CryptoLib;
@@ -89,32 +92,29 @@ public class DepChainMember implements DeliveryListener{
             }
         }
         if (payload.startsWith("NewCommand=")) {
-            int sigIndex = payload.indexOf("SIG=");
-            if (sigIndex == -1) {
+            String json = payload.substring("NewCommand=".length()).trim();
+            TransactionRequest request = GsonUtils.GSON.fromJson(json, TransactionRequest.class);
+            
+            if (request.signature == null) {
                 System.err.println("No signature found for client command in message, ignoring");
                 return;
             }
-            String request = payload.substring("NewCommand=".length(), sigIndex).trim();
-            System.out.println("Received new command: " + request);
-            String sigB64 = payload.substring(sigIndex + 4).trim();
-            byte[] sig;
-            try {
-                sig = Base64.getDecoder().decode(sigB64);
-            } catch (IllegalArgumentException e) {
-                System.err.println("Invalid Base64 signature: " + sigB64);
-                return;
-            }
+
+            System.out.println("Received new command: " + request.from + " -> " + request.to + " value: " + request.value + " gasLimit: " + request.gasLimit + " gasPrice: " + request.gasPrice + " seq: " + request.nonce_count);
+
             
             if(senderPort < 4000){
                 System.err.println("Command received is not from a client, ignoring");
                 return;
             }
-            String[] parts = request.split(":");
-            int seq = Integer.parseInt(parts[0]);
-            String command = parts[1];
 
-            ClientRequest clientCmd = new ClientRequest(seq, senderPort, command, sig);
-            memberConfig.addPendingCommand(clientCmd);
+            if (request.gasLimit <= 0 || request.gasPrice <= 0) {
+                System.err.println("Invalid gas limit or gas price in client command, ignoring"); //FIXME we should send an error message back to the client instead of just ignoring
+                return;
+            }
+
+            Transaction tx = BlockchainMember.createTransaction(request);
+            memberConfig.addPendingTransaction(tx);
             return; 
         }
 

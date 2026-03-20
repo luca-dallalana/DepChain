@@ -7,10 +7,10 @@ public class TransactionRequest {
     public long gasLimit;       // Max gas to use
     public long gasPrice;       // Price per gas unit
     public long nonce_count;    // Sender nonce_count
-    public String signature;    // Transaction signature
+    public byte[] signature;    // Transaction signature
 
     public TransactionRequest(int from, int to, long value,
-                              long gasLimit, long gasPrice, long nonce_count, String signature) {
+                              long gasLimit, long gasPrice, long nonce_count, byte[] signature) {
         this.from = from;
         this.to = to;
         this.value = value;
