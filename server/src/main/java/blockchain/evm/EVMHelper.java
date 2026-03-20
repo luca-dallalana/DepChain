@@ -169,4 +169,20 @@ public class EVMHelper {
     private void clearTrace() {
         traceOutput.reset();
     }
+
+    // Public method to get trace output for debugging
+    public String getTraceOutput() {
+        return traceOutput.toString();
+    }
+
+    // Print last N lines of trace (useful for seeing REVERT/RETURN)
+    public void printLastTraceLines(int numLines, String label) {
+        System.out.println("\n  === TRACE: " + label + " ===");
+        String[] lines = traceOutput.toString().split("\\r?\\n");
+        int start = Math.max(0, lines.length - numLines);
+        for (int i = start; i < lines.length; i++) {
+            System.out.println("  " + lines[i]);
+        }
+        System.out.println("  === END TRACE ===\n");
+    }
 }
