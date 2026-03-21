@@ -1,11 +1,15 @@
 package config;
 
 import java.security.PublicKey;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+
+import blockchain.Transaction;
 import info.ReplicaInfo;
 import model.ClientRequest;
-import blockchain.Transaction;
 
 public class MemberConfig {
     private final int ID;               // This replica's ID
@@ -17,7 +21,6 @@ public class MemberConfig {
     private List<Transaction> pendingTransactions = new ArrayList<>(); // Transactions to be included in blocks
     private byte[] blsPrivateKey;
     private List<byte[]> allPublicKeys;
-    private List<String> appState = new ArrayList<>();
 
     public MemberConfig(int N, int thisID, PublicKey publicKey) {
         this.N = N;
@@ -120,14 +123,6 @@ public class MemberConfig {
 
     public List<byte[]> getAllPublicKeys() {
         return allPublicKeys;
-    }
-
-    public List<String> getAppState() {
-        return appState;
-    }
-
-    public void addToAppState(String command) {
-        this.appState.add(command);
     }
 
     public int getLastSequenceForClient(int clientPort) {

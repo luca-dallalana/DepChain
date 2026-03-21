@@ -2,7 +2,6 @@ package member;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
-import java.util.Base64;
 import java.util.List;
 
 import com.google.gson.Gson;
@@ -544,9 +543,9 @@ public class DepChainMember implements DeliveryListener{
                 }
                 memberConfig.setLastSequenceForClient(n.cmd.getPort(), n.cmd.getSeq());
                 System.out.println("Executed command at height " + n.height + ": " + n.cmd.getCommand() + " sending back to client " + n.cmd.getPort());
-                memberConfig.addToAppState(n.cmd.getCommand());
+                //memberConfig.addToAppState(n.cmd.getCommand());
                 memberConfig.removePendingCommand(n.cmd);
-                System.out.println("Current app state: " + memberConfig.getAppState());
+                //System.out.println("Current app state: " + memberConfig.getAppState());
                 String message = "DECIDED= " + n.cmd.getCommand();
                 try {
                     networkLayerLib.alpSend(message, "localhost", n.cmd.getPort());
