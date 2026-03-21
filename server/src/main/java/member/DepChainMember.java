@@ -8,7 +8,6 @@ import com.google.gson.Gson;
 
 import blockchain.BlockchainMember;
 import blockchain.Transaction;
-import blockchain.TransactionRequest;
 import config.MemberConfig;
 import consensus.QCManager;
 import crypto.CryptoLib;
@@ -92,18 +91,15 @@ public class DepChainMember implements DeliveryListener{
         }
         if (payload.startsWith("NewCommand=")) {
             String json = payload.substring("NewCommand=".length()).trim();
-            TransactionRequest request = GsonUtils.GSON.fromJson(json, TransactionRequest.class);
+            Transaction request = GsonUtils.GSON.fromJson(json, Transaction.class);
             
-            if (request.signature == null) {
-                System.err.println("No signature found for client command in message, ignoring");
+            if(senderPort < 4000){ //FIXME we should send an error message back to the client instead of just ignoring
+                System.err.println("Command received is not from a client, ignoring");
                 return;
             }
-
-            System.out.println("Received new command: " + request.from + " -> " + request.to + " value: " + request.value + " gasLimit: " + request.gasLimit + " gasPrice: " + request.gasPrice + " seq: " + request.nonce_count);
-
             
-            if(senderPort < 4000){
-                System.err.println("Command received is not from a client, ignoring");
+            if (request.signature == null) { //FIXME we should send an error message back to the client instead of just ignoring
+                System.err.println("Invalid signature for client command in message, ignoring");
                 return;
             }
 
@@ -112,8 +108,26 @@ public class DepChainMember implements DeliveryListener{
                 return;
             }
 
-            Transaction tx = BlockchainMember.createTransaction(request);
-            memberConfig.addPendingTransaction(tx);
+            int senderId = senderPort - 4000;
+            String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
+
+            Transaction unsignedTx = new Transaction(request.from, request.to, request.value, request.data, request.gasLimit, request.gasPrice, request.nonce_count, null); // create a transaction object without the signature for verification
+            byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
+
+            try {
+                if(!CryptoLib.verifySignature(transactionBytes, request.signature, PUBLIC_KEY_PATH)){
+                    System.err.println("Invalid signature for client command in message, ignoring"); //FIXME we should send an error message back to the client instead of just ignoring
+                    return;
+                }
+            } catch (Exception e) {
+                System.err.println("Error verifying signature for client command: " + e.getMessage());
+                return;
+            }
+
+            System.out.println("Received new command: " + request.from + " -> " + request.to + " value: " + request.value + " gasLimit: " + request.gasLimit + " gasPrice: " + request.gasPrice + " seq: " + request.nonce_count);
+
+
+            memberConfig.addPendingTransaction(request);
             return; 
         }
 
