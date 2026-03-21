@@ -17,7 +17,7 @@ import java.math.BigInteger;
 
 public class EVMHelper {
 
-    private final SimpleWorld world;
+    public final SimpleWorld world;
     private final ByteArrayOutputStream traceOutput;
     private final StandardJsonTracer tracer;
 
