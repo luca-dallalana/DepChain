@@ -4,6 +4,8 @@ import java.security.PublicKey;
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.hyperledger.besu.datatypes.Address;
+
 import info.ReplicaInfo;
 
 public class ClientConfig {
@@ -11,6 +13,7 @@ public class ClientConfig {
     private final int N;                                    // Total number of replicas
     private final int F;                                    // Byzantine fault tolerance
     private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>(); 
+    private ConcurrentHashMap<Integer, Address> accountAddresses = new ConcurrentHashMap<>();
 
     public ClientConfig(int N, int thisID, PublicKey publicKey) {
         this.N = N;
@@ -28,6 +31,10 @@ public class ClientConfig {
         fillReplicasInfo();
 
       
+    }
+
+    public Address getAccountAddress(int replicaId) {
+        return accountAddresses.get(replicaId);
     }
 
     // Leader election: round-robin based on view number

@@ -1,10 +1,14 @@
 package client;
+import java.math.BigInteger;
 import java.net.DatagramSocket;
-import java.util.Base64;
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 
-import blockchain.TransactionRequest;
+import org.apache.tuweni.bytes.Bytes;
+import org.hyperledger.besu.datatypes.Address;
+
+import blockchain.Transaction;
+import blockchain.evm.ABIEncoder;
 import config.ClientConfig;
 import crypto.CryptoLib;
 import info.ReplicaInfo;
@@ -65,7 +69,15 @@ public class Client implements DeliveryListener{
                     System.out.print("Enter gasPrice: ");
                     String gasPrice = scanner.nextLine().trim();
                     sequenceNumber++;
-                    TransactionRequest transferRequest = new TransactionRequest(config.getID(), Integer.parseInt(to), Long.parseLong(value), Long.parseLong(gasLimit), Long.parseLong(gasPrice), sequenceNumber, null);
+                    int toId = Integer.parseInt(to);
+                    long transferValue = Long.parseLong(value);
+                    Address fromAddress = config.getAccountAddress(config.getID());
+                    Address toAddress = config.getAccountAddress(toId);
+                    Bytes transferData = ABIEncoder.encodeTransfer(toAddress, BigInteger.valueOf(transferValue));
+
+                    Transaction transferRequest = new Transaction(fromAddress, toAddress,
+                    0L,transferData.toArray(),Long.parseLong(gasLimit),Long.parseLong(gasPrice),sequenceNumber,null);
+
                     try {
                         sendMessage(transferRequest);
                         while (!decided) {
@@ -90,7 +102,15 @@ public class Client implements DeliveryListener{
                     System.out.print("Enter gasPrice: ");
                     String gasPriceTF = scanner.nextLine().trim();
                     sequenceNumber++;
-                    TransactionRequest transferFromRequest = new TransactionRequest(Integer.parseInt(fromTF), Integer.parseInt(toTF), Long.parseLong(valueTF), Long.parseLong(gasLimitTF), Long.parseLong(gasPriceTF), sequenceNumber, null);
+                    int fromId = Integer.parseInt(fromTF);
+                    int toTfId = Integer.parseInt(toTF);
+                    long transferFromValue = Long.parseLong(valueTF);
+                    Address fromAddr = config.getAccountAddress(fromId);
+                    Address toTfAddress = config.getAccountAddress(toTfId);
+                    Bytes transferFromData = ABIEncoder.encodeTransferFrom(fromAddr, toTfAddress, BigInteger.valueOf(transferFromValue));
+                    
+                    Transaction transferFromRequest = new Transaction(fromAddr,toTfAddress,0L,transferFromData.toArray(),
+                        Long.parseLong(gasLimitTF),Long.parseLong(gasPriceTF),sequenceNumber,null);
                     try {
                         sendMessage(transferFromRequest);
                         while (!decided) {
@@ -107,7 +127,7 @@ public class Client implements DeliveryListener{
             }
         }
     }
-    private void sendMessage(TransactionRequest request) throws java.io.IOException {
+    private void sendMessage(Transaction request) throws java.io.IOException {
         String packet = "NewCommand=";
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
         try {

@@ -1,8 +1,10 @@
 package blockchain;
 
+import org.hyperledger.besu.datatypes.Address;
+
 public class Transaction {
-    public String from;         // Sender address
-    public String to;           // (null for contract deployment) either recipient address or contract address for calls
+    public Address from;         // Sender address
+    public Address to;           // (null for contract deployment) either recipient address or contract address for calls
     public long value;          // DepCoin amount
     public byte[] data;         // empty for simple transfers(DepCoin), otherwise contains ABI-encoded function call
     public long gasLimit;       // Max gas to use
@@ -10,7 +12,7 @@ public class Transaction {
     public long nonce_count;    // Sender nonce_count
     public byte[] signature;    // Transaction signature
 
-    public Transaction(String from, String to, long value, byte[] data,
+    public Transaction(Address from, Address to, long value, byte[] data,
                       long gasLimit, long gasPrice, long nonce_count, byte[] signature) {
         this.from = from;
         this.to = to;
@@ -33,8 +35,8 @@ public class Transaction {
     }
 
     // Getters
-    public String getFrom() { return from; }
-    public String getTo() { return to; }
+    public Address getFrom() { return from; }
+    public Address getTo() { return to; }
     public long getValue() { return value; }
     public byte[] getData() { return data; }
     public long getGasLimit() { return gasLimit; }
