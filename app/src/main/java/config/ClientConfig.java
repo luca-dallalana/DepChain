@@ -1,9 +1,13 @@
 package config;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.PublicKey;
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
+import blockchain.AddressUtils;
+import blockchain.Block;
 import org.hyperledger.besu.datatypes.Address;
 
 import info.ReplicaInfo;
@@ -14,6 +18,7 @@ public class ClientConfig {
     private final int F;                                    // Byzantine fault tolerance
     private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>(); 
     private ConcurrentHashMap<Integer, Address> accountAddresses = new ConcurrentHashMap<>();
+    private final Address istCoinContractAddress;
 
     public ClientConfig(int N, int thisID, PublicKey publicKey) {
         this.N = N;
@@ -29,12 +34,18 @@ public class ClientConfig {
         }
 
         fillReplicasInfo();
+        fillClientAccountAddresses();
+        this.istCoinContractAddress = Address.fromHexString(Block.IST_COIN_ADDRESS); //FIXME this is a Diogo hack
 
       
     }
 
     public Address getAccountAddress(int replicaId) {
         return accountAddresses.get(replicaId);
+    }
+
+    public Address getISTCoinContractAddress() {
+        return istCoinContractAddress;
     }
 
     // Leader election: round-robin based on view number
@@ -82,6 +93,17 @@ public class ClientConfig {
     private void fillReplicasInfo() {
         for (int i = 0; i < N ; i++) {
             replicas.put(i, new ReplicaInfo(i, "localhost", 3000 + i, null));
+        }
+    }
+
+    private void fillClientAccountAddresses() {
+        for (int i = 0; i < N; i++) {
+            String pubKeyPath = "../rsa_keys/client_" + i + "/client_" + i + ".pubkey";
+            if (!Files.exists(Paths.get(pubKeyPath))) {
+                continue;
+            }
+            String addressHex = AddressUtils.generateAddressFromPublicKey(pubKeyPath);
+            accountAddresses.put(i, Address.fromHexString(addressHex));
         }
     }
 

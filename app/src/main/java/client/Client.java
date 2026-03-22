@@ -44,9 +44,11 @@ public class Client implements DeliveryListener{
         
         System.out.println("\n=========== Client ==========");
         System.out.println("Commands:");
-        System.out.println("  0 - Transfer");
-        System.out.println("  1 - TransferFrom");
-        System.out.println("  2 - Exit");
+        System.out.println("  0 - DepCoin Transfer (native)");
+        System.out.println("  1 - ISTCoin Transfer (contract)");
+        System.out.println("  2 - Approve Allowance");
+        System.out.println("  3 - TransferFrom");
+        System.out.println("  4 - Exit");
         System.out.println("===============================\n");
 
         Scanner scanner = new Scanner(System.in);
@@ -55,11 +57,11 @@ public class Client implements DeliveryListener{
             String input = scanner.nextLine().trim();
             if (input.isEmpty()) continue;
             switch (input) {
-                case "2":
+                case "4":
                     scanner.close();
                     return;
                 case "0":
-                    // Transfer
+                    // Native DepCoin transfer
                     System.out.print("Enter recipient: ");
                     String to = scanner.nextLine().trim();
                     System.out.print("Enter value: ");
@@ -73,23 +75,98 @@ public class Client implements DeliveryListener{
                     long transferValue = Long.parseLong(value);
                     Address fromAddress = config.getAccountAddress(config.getID());
                     Address toAddress = config.getAccountAddress(toId);
-                    Bytes transferData = ABIEncoder.encodeTransfer(toAddress, BigInteger.valueOf(transferValue));
 
-                    Transaction transferRequest = new Transaction(config.getPort(),fromAddress, toAddress,
-                    0L,transferData.toArray(),Long.parseLong(gasLimit),Long.parseLong(gasPrice),sequenceNumber,null);
+                    Transaction DepCoinTransferRequest = new Transaction(
+                        config.getPort(),
+                        fromAddress,
+                        toAddress,
+                        transferValue,
+                        null,
+                        Long.parseLong(gasLimit),
+                        Long.parseLong(gasPrice),
+                        sequenceNumber,
+                        null
+                    );
 
                     try {
-                        sendMessage(transferRequest);
-                        while (!decided) {
-                            Thread.sleep(100);
-                        }
-                        decided = false;
-                        receivedDecided.clear();
+                        sendMessageAndWaitForDecision(DepCoinTransferRequest);
                     } catch (Exception e) {
-                        System.err.println("Error sending transfer: " + e.getMessage());
+                        System.err.println("Error sending DepCoin transfer: " + e.getMessage());
                     }
                     break;
                 case "1": 
+                    // ISTCoin transfer through contract
+                    System.out.print("Enter recipient: ");
+                    String istRecipient = scanner.nextLine().trim();
+                    System.out.print("Enter value: ");
+                    String istValue = scanner.nextLine().trim();
+                    System.out.print("Enter gasLimit: ");
+                    String istGasLimit = scanner.nextLine().trim();
+                    System.out.print("Enter gasPrice: ");
+                    String istGasPrice = scanner.nextLine().trim();
+                    sequenceNumber++;
+                    Address senderAddress = config.getAccountAddress(config.getID());
+                    Address recipientAddress = config.getAccountAddress(Integer.parseInt(istRecipient));
+                    Bytes transferData = ABIEncoder.encodeTransfer(recipientAddress, BigInteger.valueOf(Long.parseLong(istValue)));
+
+                    Transaction istCoinTransferRequest = new Transaction(
+                        config.getPort(),
+                        senderAddress,
+                        config.getISTCoinContractAddress(),
+                        0L,
+                        transferData.toArray(),
+                        Long.parseLong(istGasLimit),
+                        Long.parseLong(istGasPrice),
+                        sequenceNumber,
+                        null
+                    );
+
+                    try {
+                        sendMessageAndWaitForDecision(istCoinTransferRequest);
+                    } catch (Exception e) {
+                        System.err.println("Error sending ISTCoin transfer: " + e.getMessage());
+                    }
+                    break;
+                case "2":
+                    // Approve allowance on ISTCoin contract
+                    System.out.print("Enter spender: ");
+                    String spender = scanner.nextLine().trim();
+                    System.out.print("Enter new allowance value: ");
+                    String newAllowance = scanner.nextLine().trim();
+                    System.out.print("Enter expected current allowance: ");
+                    String expectedAllowance = scanner.nextLine().trim();
+                    System.out.print("Enter gasLimit: ");
+                    String approveGasLimit = scanner.nextLine().trim();
+                    System.out.print("Enter gasPrice: ");
+                    String approveGasPrice = scanner.nextLine().trim();
+                    sequenceNumber++;
+                    Address ownerAddress = config.getAccountAddress(config.getID());
+                    Address spenderAddress = config.getAccountAddress(Integer.parseInt(spender));
+                    Bytes approveData = ABIEncoder.encodeApprove(
+                        spenderAddress,
+                        BigInteger.valueOf(Long.parseLong(newAllowance)),
+                        BigInteger.valueOf(Long.parseLong(expectedAllowance))
+                    );
+
+                    Transaction approveRequest = new Transaction(
+                        config.getPort(),
+                        ownerAddress,
+                        config.getISTCoinContractAddress(),
+                        0L,
+                        approveData.toArray(),
+                        Long.parseLong(approveGasLimit),
+                        Long.parseLong(approveGasPrice),
+                        sequenceNumber,
+                        null
+                    );
+
+                    try {
+                        sendMessageAndWaitForDecision(approveRequest);
+                    } catch (Exception e) {
+                        System.err.println("Error sending approve: " + e.getMessage());
+                    }
+                    break;
+                case "3":
                     // TransferFrom
                     System.out.print("Enter account owner: ");
                     String fromTF = scanner.nextLine().trim();
@@ -107,25 +184,39 @@ public class Client implements DeliveryListener{
                     long transferFromValue = Long.parseLong(valueTF);
                     Address fromAddr = config.getAccountAddress(fromId);
                     Address toTfAddress = config.getAccountAddress(toTfId);
+                    Address spenderAddr = config.getAccountAddress(config.getID());
                     Bytes transferFromData = ABIEncoder.encodeTransferFrom(fromAddr, toTfAddress, BigInteger.valueOf(transferFromValue));
                     
-                    Transaction transferFromRequest = new Transaction(config.getPort(),fromAddr,toTfAddress,0L,transferFromData.toArray(),
-                        Long.parseLong(gasLimitTF),Long.parseLong(gasPriceTF),sequenceNumber,null);
+                    Transaction transferFromRequest = new Transaction(
+                        config.getPort(),
+                        spenderAddr,
+                        config.getISTCoinContractAddress(),
+                        0L,
+                        transferFromData.toArray(),
+                        Long.parseLong(gasLimitTF),
+                        Long.parseLong(gasPriceTF),
+                        sequenceNumber,
+                        null
+                    );
                     try {
-                        sendMessage(transferFromRequest);
-                        while (!decided) {
-                            Thread.sleep(100);
-                        }
-                        decided = false;
-                        receivedDecided.clear();
+                        sendMessageAndWaitForDecision(transferFromRequest);
                     } catch (Exception e) {
                         System.err.println("Error sending transferFrom: " + e.getMessage());
                     }
                     break;
                 default:
-                    System.out.println("Unknown command. Try 0 (Transfer), 1 (TransferFrom), or 2 (Exit)");
+                    System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Approve), 3 (TransferFrom), or 4 (Exit)");
             }
         }
+    }
+
+    private void sendMessageAndWaitForDecision(Transaction request) throws Exception {
+        sendMessage(request);
+        while (!decided) {
+            Thread.sleep(100);
+        }
+        decided = false;
+        receivedDecided.clear();
     }
     private void sendMessage(Transaction request) throws java.io.IOException {
         String packet = "NewCommand=";
