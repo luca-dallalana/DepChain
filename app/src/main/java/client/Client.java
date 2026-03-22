@@ -62,19 +62,13 @@ public class Client implements DeliveryListener{
                     return;
                 case "0":
                     // Native DepCoin transfer
-                    System.out.print("Enter recipient: ");
-                    String to = scanner.nextLine().trim();
-                    System.out.print("Enter value: ");
-                    String value = scanner.nextLine().trim();
-                    System.out.print("Enter gasLimit: ");
-                    String gasLimit = scanner.nextLine().trim();
-                    System.out.print("Enter gasPrice: ");
-                    String gasPrice = scanner.nextLine().trim();
-                    sequenceNumber++;
-                    int toId = Integer.parseInt(to);
-                    long transferValue = Long.parseLong(value);
+                    Address toAddress = readClientId(scanner, "Enter recipient: ");
+                    Long transferValue = readLong(scanner, "Enter value: ");
+                    Long gasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long gasPrice = readLong(scanner, "Enter gasPrice: ");
                     Address fromAddress = config.getAccountAddress(config.getID());
-                    Address toAddress = config.getAccountAddress(toId);
+
+                    sequenceNumber++;
 
                     Transaction DepCoinTransferRequest = new Transaction(
                         config.getPort(),
@@ -82,8 +76,8 @@ public class Client implements DeliveryListener{
                         toAddress,
                         transferValue,
                         null,
-                        Long.parseLong(gasLimit),
-                        Long.parseLong(gasPrice),
+                        gasLimit,
+                        gasPrice,
                         sequenceNumber,
                         null
                     );
@@ -96,18 +90,14 @@ public class Client implements DeliveryListener{
                     break;
                 case "1": 
                     // ISTCoin transfer through contract
-                    System.out.print("Enter recipient: ");
-                    String istRecipient = scanner.nextLine().trim();
-                    System.out.print("Enter value: ");
-                    String istValue = scanner.nextLine().trim();
-                    System.out.print("Enter gasLimit: ");
-                    String istGasLimit = scanner.nextLine().trim();
-                    System.out.print("Enter gasPrice: ");
-                    String istGasPrice = scanner.nextLine().trim();
-                    sequenceNumber++;
+                    Address recipientAddress = readClientId(scanner, "Enter recipient: ");
+                    Long istValue = readLong(scanner, "Enter value: ");
+                    Long istGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long istGasPrice = readLong(scanner, "Enter gasPrice: ");
                     Address senderAddress = config.getAccountAddress(config.getID());
-                    Address recipientAddress = config.getAccountAddress(Integer.parseInt(istRecipient));
-                    Bytes transferData = ABIEncoder.encodeTransfer(recipientAddress, BigInteger.valueOf(Long.parseLong(istValue)));
+                    Bytes transferData = ABIEncoder.encodeTransfer(recipientAddress, BigInteger.valueOf(istValue));
+
+                    sequenceNumber++;
 
                     Transaction istCoinTransferRequest = new Transaction(
                         config.getPort(),
@@ -115,8 +105,8 @@ public class Client implements DeliveryListener{
                         config.getISTCoinContractAddress(),
                         0L,
                         transferData.toArray(),
-                        Long.parseLong(istGasLimit),
-                        Long.parseLong(istGasPrice),
+                        istGasLimit,
+                        istGasPrice,
                         sequenceNumber,
                         null
                     );
@@ -129,24 +119,19 @@ public class Client implements DeliveryListener{
                     break;
                 case "2":
                     // Approve allowance on ISTCoin contract
-                    System.out.print("Enter spender: ");
-                    String spender = scanner.nextLine().trim();
-                    System.out.print("Enter new allowance value: ");
-                    String newAllowance = scanner.nextLine().trim();
-                    System.out.print("Enter expected current allowance: ");
-                    String expectedAllowance = scanner.nextLine().trim();
-                    System.out.print("Enter gasLimit: ");
-                    String approveGasLimit = scanner.nextLine().trim();
-                    System.out.print("Enter gasPrice: ");
-                    String approveGasPrice = scanner.nextLine().trim();
-                    sequenceNumber++;
+                    Address spenderAddress = readClientId(scanner, "Enter spender: ");
+                    Long newAllowance = readLong(scanner, "Enter new allowance value: ");
+                    Long expectedAllowance = readLong(scanner, "Enter expected current allowance: ");
+                    Long approveGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long approveGasPrice = readLong(scanner, "Enter gasPrice: ");
                     Address ownerAddress = config.getAccountAddress(config.getID());
-                    Address spenderAddress = config.getAccountAddress(Integer.parseInt(spender));
                     Bytes approveData = ABIEncoder.encodeApprove(
                         spenderAddress,
-                        BigInteger.valueOf(Long.parseLong(newAllowance)),
-                        BigInteger.valueOf(Long.parseLong(expectedAllowance))
+                        BigInteger.valueOf(newAllowance),
+                        BigInteger.valueOf(expectedAllowance)
                     );
+
+                    sequenceNumber++;
 
                     Transaction approveRequest = new Transaction(
                         config.getPort(),
@@ -154,8 +139,8 @@ public class Client implements DeliveryListener{
                         config.getISTCoinContractAddress(),
                         0L,
                         approveData.toArray(),
-                        Long.parseLong(approveGasLimit),
-                        Long.parseLong(approveGasPrice),
+                        approveGasLimit,
+                        approveGasPrice,
                         sequenceNumber,
                         null
                     );
@@ -168,24 +153,15 @@ public class Client implements DeliveryListener{
                     break;
                 case "3":
                     // TransferFrom
-                    System.out.print("Enter account owner: ");
-                    String fromTF = scanner.nextLine().trim();
-                    System.out.print("Enter recipient: ");
-                    String toTF = scanner.nextLine().trim();
-                    System.out.print("Enter value: ");
-                    String valueTF = scanner.nextLine().trim();
-                    System.out.print("Enter gasLimit: ");
-                    String gasLimitTF = scanner.nextLine().trim();
-                    System.out.print("Enter gasPrice: ");
-                    String gasPriceTF = scanner.nextLine().trim();
-                    sequenceNumber++;
-                    int fromId = Integer.parseInt(fromTF);
-                    int toTfId = Integer.parseInt(toTF);
-                    long transferFromValue = Long.parseLong(valueTF);
-                    Address fromAddr = config.getAccountAddress(fromId);
-                    Address toTfAddress = config.getAccountAddress(toTfId);
+                    Address fromAddr = readClientId(scanner, "Enter account owner: ");
+                    Address toTfAddress = readClientId(scanner, "Enter recipient: ");
+                    Long transferFromValue = readLong(scanner, "Enter value: ");
+                    Long gasLimitTF = readLong(scanner, "Enter gasLimit: ");
+                    Long gasPriceTF = readLong(scanner, "Enter gasPrice: ");
                     Address spenderAddr = config.getAccountAddress(config.getID());
                     Bytes transferFromData = ABIEncoder.encodeTransferFrom(fromAddr, toTfAddress, BigInteger.valueOf(transferFromValue));
+
+                    sequenceNumber++;
                     
                     Transaction transferFromRequest = new Transaction(
                         config.getPort(),
@@ -193,8 +169,8 @@ public class Client implements DeliveryListener{
                         config.getISTCoinContractAddress(),
                         0L,
                         transferFromData.toArray(),
-                        Long.parseLong(gasLimitTF),
-                        Long.parseLong(gasPriceTF),
+                        gasLimitTF,
+                        gasPriceTF,
                         sequenceNumber,
                         null
                     );
@@ -218,6 +194,7 @@ public class Client implements DeliveryListener{
         decided = false;
         receivedDecided.clear();
     }
+
     private void sendMessage(Transaction request) throws java.io.IOException {
         String packet = "NewCommand=";
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
@@ -264,6 +241,53 @@ public class Client implements DeliveryListener{
             System.out.println("The command: " + command + " was decided.");
         }
         
+    }
+
+    private Address readClientId(Scanner scanner, String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String input = scanner.nextLine().trim();
+            int id;
+            try {
+                id = Integer.parseInt(input);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid client ID. Please enter a number.");
+                continue;
+            }
+
+            if (id < 0 || id >= config.getN()) {
+                System.out.println("Invalid client ID. Valid range is 0 to " + (config.getN() - 1) + ".");
+                continue;
+            }
+
+            if (config.getAccountAddress(id) == null) {
+                System.out.println("No address configured for client " + id + ".");
+                continue;
+            }
+
+            return config.getAccountAddress(id);
+        }
+    }
+
+    private Long readLong(Scanner scanner, String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String input = scanner.nextLine().trim();
+            long value;
+            try {
+                value = Long.parseLong(input);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid number: " + input);
+                continue;
+            }
+
+            if (value <= 0) {
+                System.out.println("Value must be bigger then zero.");
+                continue;
+            }
+
+            return value;
+        }
     }
 
 }
