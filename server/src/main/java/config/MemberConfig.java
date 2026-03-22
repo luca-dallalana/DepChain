@@ -133,9 +133,9 @@ public class MemberConfig {
         ClientsLastSequence.put(clientPort, sequenceNumber);
     }
 
-    public boolean isDuplicateRequest(ClientRequest request) {
-        int lastSeq = getLastSequenceForClient(request.getPort());
-        return request.getSeq() <= lastSeq;
+    public boolean isDuplicateRequest(Transaction request) {
+        int lastSeq = getLastSequenceForClient(request.senderPort);
+        return request.nonce_count <= lastSeq;
     }
 
 }

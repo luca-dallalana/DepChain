@@ -3,6 +3,7 @@ import consensus.QCManager;
 import model.Message;
 import model.Node;
 import model.QC;
+import blockchain.Block;
 
 public class DepChainUtil {
     private final QCManager qcManager;
@@ -11,18 +12,19 @@ public class DepChainUtil {
         this.qcManager = qcManager;
     }
 
-    public static Message Msg(String type, Node node, QC qc ,int viewNumber) {
+    public static Message Msg(String type, Block block, String blockHash, QC qc ,int viewNumber) {
         Message m = new Message();
         m.type = type;
         m.viewNumber = viewNumber;
-        m.node = node;
+        m.block = block;
+        m.blockHash = blockHash;
         m.justify = qc;
         return m;
     }
 
-    public Message voteMsg(String type, Node node, QC qc, int viewNumber) throws Exception {
-        Message m = Msg(type, node, qc, viewNumber);
-        m.partialSig = qcManager.createPartialSignature(type, viewNumber, node);
+    public Message voteMsg(String type, Block block, String blockHash, QC qc, int viewNumber) throws Exception {
+        Message m = Msg(type, block, blockHash, qc, viewNumber);
+        m.partialSig = qcManager.createPartialSignature(type, viewNumber, blockHash);
         return m;
     }
 

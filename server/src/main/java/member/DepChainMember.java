@@ -15,8 +15,8 @@ import info.ReplicaInfo;
 import model.CatchUp;
 import model.ClientRequest;
 import model.Message;
-import model.Node;
-import model.NodeTree;
+import blockchain.Block;
+import blockchain.BlockStore;
 import model.QC;
 import network.DeliveryListener;
 import network.GsonUtils;
@@ -31,12 +31,12 @@ public class DepChainMember implements DeliveryListener{
 
     private DatagramSocket socket;
     private UdpReceiver receiver;
-    private NodeTree nodeTree;
+    private BlockStore blockStore;
 
     private final MemberConfig memberConfig; // All replica information
     private final QCManager qcManager;
     private final DepChainUtil util;
-    private Node currentProposal; // Track leader's proposal
+    private Block currentProposal; // Track leader's proposal
     private int lastExecutedHeight; // Track last executed command height
     private int timeoutCount = 1; // Track number of timeouts for exponential backoff
 
@@ -48,7 +48,6 @@ public class DepChainMember implements DeliveryListener{
         this.socket = socket;
 
         // Initialize consensus state
-        this.nodeTree = new NodeTree();
         this.curView = 0;
         this.lockedQC = null;
         this.prepareQC = null;
@@ -62,14 +61,14 @@ public class DepChainMember implements DeliveryListener{
     }
 
 
-    public boolean safeNode(Node node, QC qc) {
+    public boolean safeBlock(Block block, QC qc) {
         if (lockedQC == null) {
-            return nodeTree.extendsFrom(node, qc.node);
+            return blockStore.extendsFrom(block, qc.blockHash);
         }
-        //System.out.println("======= lockedQC node: " + lockedQC.node + " view: " + lockedQC.viewNumber);
-        //System.out.println("======= justify node: " + qc.node + " view: " + qc.viewNumber);
-        // Safety (Extends from lockedQC.node) Liveness (QC has higher view than locked QC)
-        return nodeTree.extendsFrom(node, lockedQC.node) || qc.viewNumber > lockedQC.viewNumber;
+        //System.out.println("======= lockedQC node: " + lockedQC.blockHash + " view: " + lockedQC.viewNumber);
+        //System.out.println("======= justify node: " + qc.blockHash + " view: " + qc.viewNumber);
+        // Safety (Extends from lockedQC.blockHash) Liveness (QC has higher view than locked QC)
+        return blockStore.extendsFrom(block, lockedQC.blockHash) || qc.viewNumber > lockedQC.viewNumber;
     }
 
     public void setNetworkLayerLib(NetworkLayerLib networkLayerLib) {
@@ -93,7 +92,7 @@ public class DepChainMember implements DeliveryListener{
             String json = payload.substring("NewCommand=".length()).trim();
             Transaction request = GsonUtils.GSON.fromJson(json, Transaction.class);
             
-            if(senderPort < 4000){ //FIXME we should send an error message back to the client instead of just ignoring
+            if (senderPort < 4000){ //FIXME we should send an error message back to the client instead of just ignoring
                 System.err.println("Command received is not from a client, ignoring");
                 return;
             }
@@ -108,10 +107,15 @@ public class DepChainMember implements DeliveryListener{
                 return;
             }
 
+            if (request.senderPort != senderPort) {
+                System.err.println("Sender port in transaction does not match actual sender port, ignoring");//FIXME we should send an error message back to the client instead of just ignoring
+                return;
+            }
+
             int senderId = senderPort - 4000;
             String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
 
-            Transaction unsignedTx = new Transaction(request.from, request.to, request.value, request.data, request.gasLimit, request.gasPrice, request.nonce_count, null); // create a transaction object without the signature for verification
+            Transaction unsignedTx = new Transaction(request.senderPort, request.from, request.to, request.value, request.data, request.gasLimit, request.gasPrice, request.nonce_count, null); // create a transaction object without the signature for verification
             byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
 
             try {
@@ -202,7 +206,8 @@ public class DepChainMember implements DeliveryListener{
         this.receiver = new UdpReceiver(socket, networkLayerLib);
         new Thread(receiver).start();
         startTimeout(); // restart for new-view phase
-        prepareQC = new QC("prepare", 0, nodeTree.getFirstNode(), null); // Initialize prepareQC to genesis QC
+        prepareQC = new QC("prepare", 0, blockStore.getFirstBlock().blockHash, null); // Initialize prepareQC to genesis QC
+        this.blockStore = new BlockStore(null); //FIXME we should initialize the actual genesis block
     }
 
     private void sendMessage(Message m, String destIp, int destPort) throws java.io.IOException {
@@ -221,27 +226,27 @@ public class DepChainMember implements DeliveryListener{
         
         if (maxQC.viewNumber > prepareQC.viewNumber) {
             System.out.println("Received a maxQC bigger then my prepareQC" );
-            sendCatchUpRequest(maxQC.node);
+            sendCatchUpRequest(maxQC.blockHash);
         }
 
         // Clear new-view votes to prevent multiple calls to handlePrepare
         qcManager.clearVotesForTypeView("new-view", curView);
         try {
-            Node curProposal;
+            Block curProposal;
+
+            Block maxQCBlock = blockStore.getBlockByHash(maxQC.blockHash);//FIXME this could go wrong if leader doesn't have the block
 
             if (memberConfig.getPendingCommands().isEmpty()) {
                 System.out.println("No pending client commands, proposing NO-OP");
-                ClientRequest noOpCmd = new ClientRequest(-1, -1, "NO-OP",null);
-                curProposal = Node.createLeaf(maxQC.node, noOpCmd);
+                curProposal = BlockchainMember.buildBlock(memberConfig.getPendingTransactions());
             } else {
                 System.out.println("Processing pending client command " + memberConfig.getPendingCommands());
-                ClientRequest cmd = memberConfig.getPendingCommands().iterator().next();
-                curProposal = Node.createLeaf(maxQC.node, cmd);
+                curProposal = BlockchainMember.buildBlock(memberConfig.getPendingTransactions()); // FIXME diogo maybe put the block only on maxQC not the hash
             }
 
             this.currentProposal = curProposal; // Store for QC formation
 
-            Message prepareMsg = util.voteMsg("prepare", curProposal, maxQC, curView);
+            Message prepareMsg = util.voteMsg("prepare", curProposal, curProposal.blockHash, maxQC, curView);
             prepareMsg.senderPort = memberConfig.getID() + 3000;
             qcManager.addVote(prepareMsg);
             broadcast(prepareMsg);
@@ -260,24 +265,30 @@ public class DepChainMember implements DeliveryListener{
                 proposeNewView();
                 return;
             }
-            byte[] sig = m.node.cmd.getSig();
-            String command = m.node.cmd.getCommand();
-            int seq = m.node.cmd.getSeq();
-            int senderId = m.node.cmd.getPort() - 4000;
-            String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
-
-            String fullCommand =  seq + ":" + command; // reconstruct full command for signature verification
-            if(!command.equals("NO-OP") && !CryptoLib.verifySignature(fullCommand.getBytes(), sig, PUBLIC_KEY_PATH)){
-                System.err.println("Invalid signature for client command in prepare message, ignoring");
-                proposeNewView();
-                return;
+            for (Transaction tx : m.block.transactions) {
+                int senderId = tx.senderPort - 4000;
+                String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
+    
+                Transaction unsignedTx = new Transaction(tx.senderPort, tx.from, tx.to, tx.value, tx.data, tx.gasLimit, tx.gasPrice, tx.nonce_count, null); // create a transaction object without the signature for verification
+                byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
+    
+                try {
+                    if(!CryptoLib.verifySignature(transactionBytes, tx.signature, PUBLIC_KEY_PATH)){ //FIXME ADD THE NO-OP verification
+                        System.err.println("Invalid signature for client transaction in block, proposing new view");
+                        proposeNewView();
+                        return;
+                    }
+                    if(memberConfig.isDuplicateRequest(tx)) { //FIXME check the no-op case
+                        System.err.println("Duplicate client command in prepare message, ignoring");
+                        proposeNewView();
+                        return;
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error verifying signature for client command: " + e.getMessage());
+                    return;
+                }
             }
-
-            if(!command.equals("NO-OP") && memberConfig.isDuplicateRequest(m.node.cmd)) {
-                System.err.println("Duplicate client command in prepare message, ignoring");
-                proposeNewView();
-                return;
-            }
+      
 
             int matchResult = util.matchingMsg(m, curView); // 0 lower view, 1 exact match, 2 same type higher view
 
@@ -294,20 +305,20 @@ public class DepChainMember implements DeliveryListener{
             
             if (matchResult == 2) {
                 System.out.println("Received higher view prepare message, updating view to " + m.viewNumber);
-                sendCatchUpRequest(m.justify.node);
+                sendCatchUpRequest(m.justify.blockHash);
                 curView = m.viewNumber; // Update to higher view
             }
 
-            if (nodeTree.extendsFrom(m.node, m.justify.node) && safeNode(m.node, m.justify)) {
+            if (blockStore.extendsFrom(m.block, m.justify.blockHash) && safeBlock(m.block, m.justify)) {
                 startTimeout();
-                Message voteMsg = util.voteMsg("prepare", m.node, null, curView);
+                Message voteMsg = util.voteMsg("prepare", null, m.blockHash, null, curView);
                 voteMsg.senderPort = memberConfig.getID() + 3000;
 
                 int leader = memberConfig.getLeader(curView);
                 ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
                 sendMessage(voteMsg, replica.getIP(), replica.getPort());
             } else {
-                System.err.println("Node failed safety check in prepare message");
+                System.err.println("block failed safety check in prepare message");
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -316,9 +327,9 @@ public class DepChainMember implements DeliveryListener{
     
     private void handlePreCommitLeader() {
         try {
-            prepareQC = qcManager.formQC("prepare", curView, currentProposal);
-            nodeTree.storeNode(currentProposal);
-            Message preCommitMsg = util.voteMsg("pre-commit", currentProposal, prepareQC, curView);
+            prepareQC = qcManager.formQC("prepare", curView, currentProposal.blockHash);
+            blockStore.storeBlock(currentProposal);
+            Message preCommitMsg = util.voteMsg("pre-commit", currentProposal, currentProposal.blockHash, prepareQC, curView);
             preCommitMsg.senderPort = memberConfig.getID() + 3000;
             qcManager.addVote(preCommitMsg);
             broadcast(preCommitMsg);
@@ -352,16 +363,16 @@ public class DepChainMember implements DeliveryListener{
 
             if (matchResult == 2) {
                 System.out.println("Received higher prepare message, updating view to " + m.viewNumber);
-                sendCatchUpRequest(m.justify.node);
+                sendCatchUpRequest(m.justify.blockHash);
                 curView = m.viewNumber; // Update to higher view
             }
 
             startTimeout();
 
-            nodeTree.storeNode(m.node);
+            blockStore.storeBlock(m.block); //FIXME we should check if this block is the same as the one in the QC
             prepareQC = m.justify;
 
-            Message voteMsg = util.voteMsg("pre-commit", m.justify.node, null, curView);
+            Message voteMsg = util.voteMsg("pre-commit", null, m.blockHash, m.justify, curView);
             voteMsg.senderPort = memberConfig.getID() + 3000;
 
             int leader = memberConfig.getLeader(curView);
@@ -374,9 +385,9 @@ public class DepChainMember implements DeliveryListener{
 
     private void handleCommitLeader() {
         try {
-            lockedQC = qcManager.formQC("pre-commit", curView, currentProposal);
+            lockedQC = qcManager.formQC("pre-commit", curView, currentProposal.blockHash);
 
-            Message commitMsg = util.voteMsg("commit", currentProposal, lockedQC, curView);
+            Message commitMsg = util.voteMsg("commit", null, currentProposal.blockHash, lockedQC, curView);
             commitMsg.senderPort = memberConfig.getID() + 3000;
             qcManager.addVote(commitMsg);
             broadcast(commitMsg);
@@ -412,14 +423,14 @@ public class DepChainMember implements DeliveryListener{
 
             if (matchResult == 2) {
                 System.out.println("Received higher view pre-commit message, updating view to " + m.viewNumber);
-                sendCatchUpRequest(m.justify.node);
+                sendCatchUpRequest(m.justify.blockHash);
                 curView = m.viewNumber; // Update to higher view
             }
             startTimeout();
 
             lockedQC = m.justify;
 
-            Message voteMsg = util.voteMsg("commit", m.justify.node, null, curView);
+            Message voteMsg = util.voteMsg("commit", null, m.justify.blockHash, m.justify, curView);
             voteMsg.senderPort = memberConfig.getID() + 3000;
 
             int leader = memberConfig.getLeader(curView);
@@ -432,13 +443,14 @@ public class DepChainMember implements DeliveryListener{
 
     private void handleDecideLeader() {
         try {
-            QC commitQC = qcManager.formQC("commit", curView, currentProposal);
+            QC commitQC = qcManager.formQC("commit", curView, currentProposal.blockHash);
 
-            Message decideMsg = DepChainUtil.Msg("decide", currentProposal, commitQC, curView);
+            Message decideMsg = DepChainUtil.Msg("decide", null, currentProposal.parentBlockHash, commitQC, curView);
             decideMsg.senderPort = memberConfig.getID() + 3000;
 
             broadcast(decideMsg);
-            executeNode(commitQC.node);
+            Block block = blockStore.getBlockByHash(commitQC.blockHash);
+            BlockchainMember.executeBlock(block);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -466,12 +478,13 @@ public class DepChainMember implements DeliveryListener{
 
         if (matchResult == 2) {
             System.out.println("Received higher view commit message, updating view to " + m.viewNumber);
-            sendCatchUpRequest(m.justify.node);
+            sendCatchUpRequest(m.justify.blockHash);
             curView = m.viewNumber; // Update to higher view
         }
 
         startTimeout();
-        executeNode(m.justify.node);
+        Block block = blockStore.getBlockByHash(m.justify.blockHash);
+        BlockchainMember.executeBlock(block);
     }
 
     private QC getMaxQC() { //maybe put this in utils
@@ -520,7 +533,7 @@ public class DepChainMember implements DeliveryListener{
         stopTimeout();
         curView++;
         System.out.println("Proposing new view: " + curView);
-        Message newViewMsg = DepChainUtil.Msg("new-view", null, prepareQC, curView);
+        Message newViewMsg = DepChainUtil.Msg("new-view", null, null ,prepareQC, curView); //FIXME maybe include here the block since the QC no longer has the full block
         newViewMsg.senderPort = memberConfig.getID() + 3000;
         int leaderID = memberConfig.getLeader(curView);
         ReplicaInfo replica = memberConfig.getReplicaInfo(leaderID);
@@ -535,7 +548,7 @@ public class DepChainMember implements DeliveryListener{
         }
         startTimeout(); // restart for new-view phase
     }
-    
+    /*
     private void executeNode(Node node) {
         List<Node> cmdToExecute = nodeTree.getNodesUntil(node, lastExecutedHeight);
         
@@ -569,13 +582,13 @@ public class DepChainMember implements DeliveryListener{
             }
         }
     }
-
-    private void sendCatchUpRequest(Node receivedNode){
-        String message = "CATCH-UP= "; // we send the whole but only need the height of the lockedQC node to verify
+    */
+    private void sendCatchUpRequest(String receivedBlockHash) {
+        String message = "CATCH-UP= "; // we send the whole but only need the height of the lockedQC block to verify
         CatchUp m = new CatchUp();
         m.viewNumber = curView;
         m.lockedQC = lockedQC;
-        m.receivedNode = receivedNode; // the node that the sender of the catch-up message is currently at (the one he sent me in justify)
+        m.receivedBlockHash = receivedBlockHash; // the block hash that the sender of the catch-up message is currently at (the one he sent me in justify)
         m.senderPort = memberConfig.getID() + 3000;
         String json = GsonUtils.GSON.toJson(m);
         message += json;
@@ -594,13 +607,13 @@ public class DepChainMember implements DeliveryListener{
             System.err.println("Invalid QC in catch-up message");
             return;
         }
-        List<Node> nodesToCatchUp = nodeTree.getNodesUntil(msg.receivedNode, msg.lockedQC.node.height);
+        List<Block> blocksToCatchUp = blockStore.getBlocksUntil(msg.receivedBlockHash, msg.lockedQC.blockHash);
        
         String message = "CATCH-UP_RESPONSE= ";
 
         CatchUp response = new CatchUp();
         response.viewNumber = curView;
-        response.nodeList = nodesToCatchUp;
+        response.blockList = blocksToCatchUp;
         response.senderPort = memberConfig.getID() + 3000;
 
         String json = GsonUtils.GSON.toJson(response);
@@ -615,21 +628,21 @@ public class DepChainMember implements DeliveryListener{
     }
 
     private void handleCatchUpResponse(CatchUp msg){
-        List<Node> nodeList = msg.nodeList;
-        for (int i = nodeList.size() - 1; i >= 0; i--) { // Execute from lowest height to highest
-            Node n = nodeList.get(i);
+        List<Block> blockList = msg.blockList;
+        for (int i = blockList.size() - 1; i >= 0; i--) { // Execute from lowest height to highest
+            Block b = blockList.get(i);
             try {
-                if (nodeTree.getNodeByHash(n.depHash()) == null) {
-                    System.out.println("Storing catch-up node at height " + n.height + ": " + n);
-                    nodeTree.storeNode(n);
+                if (blockStore.getBlockByHash(b.depHash()) == null) {
+                    System.out.println("Storing catch-up block at height " + b.blockNumber + ": " + b.blockHash);
+                    blockStore.storeBlock(b);
                 } else {
-                    System.out.println("Node already exists in tree, skipping store for node at height " + n.height + ": " + n);
+                    System.out.println("Block already exists in store, skipping store for block at height " + b.blockNumber + ": " + b.blockHash);
                 }
             } catch (Exception e) {
-                System.out.println("Error storing catch-up node: " + e.getMessage());
+                System.out.println("Error storing catch-up block: " + e.getMessage());
             }
         }
-        System.out.println("Updated node tree with catch-up nodes, now at height " + nodeList.get(0).height);
+        System.out.println("Updated block store with catch-up blocks, now at height " + blockList.get(0).blockNumber);
     }
 
 }

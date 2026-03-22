@@ -17,10 +17,10 @@ import org.hyperledger.besu.datatypes.Wei;
 public class BlockchainMember {
 
     // Consensus calls this when a block is decided
-    public void executeBlock(Block block){}
+    public static void executeBlock(Block block){}
 
     // Consensus calls this to get the next block to propose
-    public Block buildBlock(List<Transaction> pendingTxs){
+    public static Block buildBlock(List<Transaction> pendingTxs){
         List<Transaction> orderedTxs = orderTransactionsForBlock(pendingTxs);
         return new Block();
     }
@@ -30,7 +30,7 @@ public class BlockchainMember {
         return true; // Implement block validation logic (e.g., check txs, state transitions)
     }
 
-    public List<Transaction> orderTransactionsForBlock(List<Transaction> transactions) {
+    public static List<Transaction> orderTransactionsForBlock(List<Transaction> transactions) {
         Map<String, Queue<Transaction>> bySender = new HashMap<>();
 
         for (Transaction tx : transactions) {

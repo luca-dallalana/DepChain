@@ -5,14 +5,14 @@ import java.util.List;
 public class QC {
     public String type;
     public int viewNumber;
-    public Node node;
+    public String blockHash; // Hash of the block this QC certifies
     public byte[] sig;
     public List<Integer> signers; // key indices of replicas that contributed to this QC
 
-    public QC(String type, int viewNumber, Node node, byte[] sig) {
+    public QC(String type, int viewNumber, String blockHash, byte[] sig) {
         this.type = type;
         this.viewNumber = viewNumber;
-        this.node = node;
+        this.blockHash = blockHash;
         this.sig = sig;
     }
 }

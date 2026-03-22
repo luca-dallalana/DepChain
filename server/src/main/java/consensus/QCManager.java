@@ -50,7 +50,7 @@ public class QCManager {
                     }
                     
                 } else {
-                    byte[] messageHash = computeMessageHash(vote.type, vote.viewNumber, vote.node);
+                    byte[] messageHash = computeMessageHash(vote.type, vote.viewNumber, vote.blockHash);
                     if (!signatureService.verifyPartialSignature(vote.partialSig, messageHash, vote.senderPort - 3000)) {
                         System.out.println("Invalid partial signature from sender " + vote.senderPort);
                         return false;
@@ -66,7 +66,7 @@ public class QCManager {
         }
     }
 
-    public QC formQC(String type, int viewNumber, Node node) throws Exception {
+    public QC formQC(String type, int viewNumber, String blockHash) throws Exception {
         String key = createVoteKey(type, viewNumber);
         List<Message> votes = voteStore.get(key);
   
@@ -88,7 +88,7 @@ public class QCManager {
 
         byte[] aggregatedSig = signatureService.aggregateSignatures(partialSigs);
         clearVotesForTypeView(type, viewNumber); // Clear old votes for new view
-        QC qc = new QC(type, viewNumber, node, aggregatedSig);
+        QC qc = new QC(type, viewNumber, blockHash, aggregatedSig);
         qc.signers = signerList;
         return qc;
     }
@@ -96,17 +96,18 @@ public class QCManager {
     public boolean verifyQC(QC qc) {
         try {
 
+            /* FIXME missing the genesis qc special case
             if (qc.node.height == 0 && qc.viewNumber == 0) {
                 System.out.println("Gennesis QC accepted");
                 return true;
             }
-
+            */
             if (qc.signers.size() < memberConfig.getQuorumSize()) {
                 System.out.println("QC verification failed: insufficient signers");
                 return false;
             }
 
-            byte[] messageHash = computeMessageHash(qc.type, qc.viewNumber, qc.node);
+            byte[] messageHash = computeMessageHash(qc.type, qc.viewNumber, qc.blockHash);
             return signatureService.verifyAggregatedSignature(
                 qc.sig,
                 messageHash,
@@ -118,8 +119,8 @@ public class QCManager {
         }
     }
 
-    public byte[] createPartialSignature(String type, int viewNumber, Node node) throws Exception {
-        byte[] messageHash = computeMessageHash(type, viewNumber, node);
+    public byte[] createPartialSignature(String type, int viewNumber, String blockHash) throws Exception {
+        byte[] messageHash = computeMessageHash(type, viewNumber, blockHash);
         return signatureService.createPartialSignature(memberConfig.getID(), messageHash);
     }
 
@@ -138,11 +139,11 @@ public class QCManager {
         return type + ":" + viewNumber;
     }
 
-    private byte[] computeMessageHash(String type, int viewNumber, Node node) throws Exception {
+    private byte[] computeMessageHash(String type, int viewNumber, String blockHash) throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         baos.write(type.getBytes(StandardCharsets.UTF_8));
         baos.write(ByteBuffer.allocate(4).putInt(viewNumber).array());
-        baos.write(node.depHash());
+        baos.write(blockHash.getBytes(StandardCharsets.UTF_8));
         return CryptoLib.hash(baos.toByteArray());
     }
 }

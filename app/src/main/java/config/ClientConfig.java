@@ -74,6 +74,10 @@ public class ClientConfig {
         return ID; 
     }
 
+    public int getPort() {
+        return 4000 + ID; // Port is derived from ID
+    }
+
     // Static factory for creating a default 4-replica configuration (f=1)
     private void fillReplicasInfo() {
         for (int i = 0; i < N ; i++) {

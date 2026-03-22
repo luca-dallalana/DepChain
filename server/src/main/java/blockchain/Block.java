@@ -2,18 +2,21 @@ package blockchain;
 
 import blockchain.evm.ABIEncoder;
 import blockchain.evm.EVMHelper;
+import crypto.CryptoLib;
+
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
 import blockchain.AddressUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,6 +51,54 @@ public class Block {
 
     public boolean isGenesisBlock() {
         return blockNumber == 0 && parentBlockHash == null;
+    }
+
+    public String depHash() throws Exception {
+        if (blockHash != null && !blockHash.isBlank()) {
+            return blockHash;
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        writeString(baos, parentBlockHash);
+        writeLong(baos, timestamp);
+        writeLong(baos, blockNumber);
+
+        if (transactions != null) {
+            for (Transaction tx : transactions) {
+                writeInt(baos, tx.senderPort);
+                writeString(baos, tx.from != null ? tx.from.toHexString() : null);
+                writeString(baos, tx.to != null ? tx.to.toHexString() : null);
+                writeLong(baos, tx.value);
+                writeLong(baos, tx.gasLimit);
+                writeLong(baos, tx.gasPrice);
+                writeLong(baos, tx.nonce_count);
+                writeBytes(baos, tx.data);
+                writeBytes(baos, tx.signature);
+            }
+        }
+
+        writeWorldState(baos, state);
+
+        byte[] hash = CryptoLib.hash(baos.toByteArray());
+        return "0x" + AddressUtils.bytesToHex(hash);
+    }
+
+    public static Block createLeaf(Block parent, List<Transaction> transactions, WorldState state, long timestamp)
+            throws Exception {
+        if (parent == null) {
+            throw new IllegalArgumentException("Parent block cannot be null");
+        }
+
+        Block leaf = new Block(
+            null,
+            parent.depHash(),
+            transactions,
+            state,
+            timestamp,
+            parent.blockNumber + 1
+        );
+        leaf.blockHash = leaf.depHash();
+        return leaf;
     }
 
     public static Block createAndSaveGenesis(String projectRoot) {
@@ -109,6 +160,7 @@ public class Block {
             // 5. Create deployment transactions (for record-keeping in genesis block)
             List<Transaction> transactions = new ArrayList<>();
             transactions.add(new Transaction(
+                -1,
                 adminAddress,
                 null,  // Contract deployment
                 0,     // No value transfer
@@ -119,6 +171,7 @@ public class Block {
                 null       // No signature (trusted genesis)
             ));
             transactions.add(new Transaction(
+                -1,
                 adminAddress,
                 null,  // Contract deployment
                 0,     // No value transfer
@@ -175,10 +228,7 @@ public class Block {
             );
 
             // 8. Compute block hash
-            String blockJson = genesis.toJson();
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(blockJson.getBytes(StandardCharsets.UTF_8));
-            genesis.blockHash = "0x" + AddressUtils.bytesToHex(hash);
+            genesis.blockHash = genesis.depHash();
 
             System.out.println("Genesis block hash: " + genesis.blockHash);
 
@@ -204,4 +254,66 @@ public class Block {
         Files.createDirectories(path.getParent());
         Files.writeString(path, toJson());
     }
+
+    private static void writeInt(ByteArrayOutputStream baos, int value) {
+        byte[] bytes = ByteBuffer.allocate(4).putInt(value).array();
+        baos.write(bytes, 0, bytes.length);
+    }
+
+    private static void writeLong(ByteArrayOutputStream baos, long value) {
+        byte[] bytes = ByteBuffer.allocate(8).putLong(value).array();
+        baos.write(bytes, 0, bytes.length);
+    }
+
+    private static void writeString(ByteArrayOutputStream baos, String value) {
+        byte[] bytes = value != null ? value.getBytes(StandardCharsets.UTF_8) : new byte[0];
+        baos.write(bytes, 0, bytes.length);
+    }
+
+    private static void writeBytes(ByteArrayOutputStream baos, byte[] value) {
+        byte[] bytes = value != null ? value : new byte[0];
+        baos.write(bytes, 0, bytes.length);
+    }
+
+    private static void writeWorldState(ByteArrayOutputStream baos, WorldState worldState) {
+        if (worldState == null || worldState.accounts == null) {
+            writeInt(baos, 0);
+            return;
+        }
+
+        List<String> accountAddresses = new ArrayList<>(worldState.accounts.keySet());
+        Collections.sort(accountAddresses);
+
+        for (String address : accountAddresses) {
+            Account account = worldState.accounts.get(address);
+            writeString(baos, address);
+            writeAccount(baos, account);
+        }
+    }
+
+    private static void writeAccount(ByteArrayOutputStream baos, Account account) {
+        if (account == null) {
+            writeInt(baos, 0);
+            return;
+        }
+
+        writeString(baos, account.address);
+        writeLong(baos, account.balance);
+        writeLong(baos, account.nonce_count);
+        writeBytes(baos, account.code);
+
+        if (account.storage == null) {
+            writeInt(baos, 0);
+            return;
+        }
+
+        List<String> storageKeys = new ArrayList<>(account.storage.keySet());
+        Collections.sort(storageKeys);
+
+        for (String key : storageKeys) {
+            writeString(baos, key);
+            writeString(baos, account.storage.get(key));
+        }
+    }
+
 }

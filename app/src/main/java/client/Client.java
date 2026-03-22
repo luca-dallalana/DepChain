@@ -75,7 +75,7 @@ public class Client implements DeliveryListener{
                     Address toAddress = config.getAccountAddress(toId);
                     Bytes transferData = ABIEncoder.encodeTransfer(toAddress, BigInteger.valueOf(transferValue));
 
-                    Transaction transferRequest = new Transaction(fromAddress, toAddress,
+                    Transaction transferRequest = new Transaction(config.getPort(),fromAddress, toAddress,
                     0L,transferData.toArray(),Long.parseLong(gasLimit),Long.parseLong(gasPrice),sequenceNumber,null);
 
                     try {
@@ -109,7 +109,7 @@ public class Client implements DeliveryListener{
                     Address toTfAddress = config.getAccountAddress(toTfId);
                     Bytes transferFromData = ABIEncoder.encodeTransferFrom(fromAddr, toTfAddress, BigInteger.valueOf(transferFromValue));
                     
-                    Transaction transferFromRequest = new Transaction(fromAddr,toTfAddress,0L,transferFromData.toArray(),
+                    Transaction transferFromRequest = new Transaction(config.getPort(),fromAddr,toTfAddress,0L,transferFromData.toArray(),
                         Long.parseLong(gasLimitTF),Long.parseLong(gasPriceTF),sequenceNumber,null);
                     try {
                         sendMessage(transferFromRequest);
