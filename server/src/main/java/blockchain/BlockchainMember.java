@@ -88,42 +88,47 @@ public class BlockchainMember {
         return storage;
     }
 
-    public static WorldState computeState(EVMHelper evm, List<Transaction> transactions, WorldState initialState) {
-        Set<String> trackedAddresses = new HashSet<>();
+    private static void initializeEVM(EVMHelper evm, WorldState state) {
+        for (Map.Entry<String, Account> entry : state.accounts.entrySet()) {
+            String addrStr = entry.getKey();
+            Account account = entry.getValue();
+            Address addr = Address.fromHexString(addrStr);
 
-        // Track existing accounts from initialState (already loaded in EVM)
-        for (String address : initialState.accounts.keySet()) {
-            trackedAddresses.add(address);
-        }
+            // Create account in EVM with balance
+            evm.createAccount(addr, Wei.of(account.balance));
 
-        // Execute each transaction (contract calls only)
-        for (Transaction tx : transactions) {
-            if (tx.to == null) {
-                // Contract deployment not supported in executeBlock (only in genesis setup)
-                throw new RuntimeException("Contract deployment must be done in genesis setup, not via executeBlock()");
+            // Get the mutable account to set additional properties
+            org.hyperledger.besu.evm.account.MutableAccount besuAccount =
+                (org.hyperledger.besu.evm.account.MutableAccount) evm.world.get(addr);
+
+            if (besuAccount != null) {
+                for (int i = 0; i < account.nonce_count; i++) {
+                    besuAccount.incrementNonce();
+                }
+
+                // If contract account, load code and storage
+                if (account.isContract()) {
+                    // Set contract code
+                    besuAccount.setCode(Bytes.wrap(account.code));
+
+                    // Load contract storage
+                    if (account.storage != null) {
+                        for (Map.Entry<String, String> storageEntry : account.storage.entrySet()) {
+                            org.apache.tuweni.units.bigints.UInt256 key =
+                                org.apache.tuweni.units.bigints.UInt256.fromHexString(storageEntry.getKey());
+                            org.apache.tuweni.units.bigints.UInt256 value =
+                                org.apache.tuweni.units.bigints.UInt256.fromHexString(storageEntry.getValue());
+                            besuAccount.setStorageValue(key, value);
+                        }
+                    }
+                }
             }
-
-            // Contract call
-            Address caller = tx.from;
-            Address contractAddress = tx.to;
-            Bytes callData = Bytes.wrap(tx.data);
-
-            // Execute the contract call
-            EVMHelper.ExecutionResult result = evm.executeCall(caller, contractAddress, callData);
-
-            if (!result.isSuccess()) {
-                throw new RuntimeException("Transaction failed: " + tx.toString());
-            }
-
-            trackedAddresses.add(caller.toHexString());
-            trackedAddresses.add(contractAddress.toHexString());
-
-            // Note: Gas fees and signature verification will be added later
-            // Sender nonce is updated automatically by EVM
         }
+    }
 
-        // Extract final state from EVM
+    private static WorldState extractState(EVMHelper evm, Set<String> trackedAddresses) {
         WorldState finalState = new WorldState();
+
         for (String addrStr : trackedAddresses) {
             Address addr = Address.fromHexString(addrStr);
             org.hyperledger.besu.evm.account.MutableAccount besuAccount =
@@ -148,5 +153,45 @@ public class BlockchainMember {
         }
 
         return finalState;
+    }
+
+    public static WorldState computeState(EVMHelper evm, List<Transaction> transactions, WorldState initialState) {
+        Set<String> trackedAddresses = new HashSet<>();
+
+        // Step 1: Initialize EVM with previous state
+        initializeEVM(evm, initialState);
+
+        // Track all existing addresses from initial state
+        trackedAddresses.addAll(initialState.accounts.keySet());
+
+        // Step 2: Execute each transaction 
+        for (Transaction tx : transactions) {
+            if (tx.to == null) {
+                // Contract deployment not supported in computeState (only in genesis setup)
+                throw new RuntimeException("Contract deployment must be done in genesis setup, not via computeState()");
+            }
+
+            // Contract call
+            Address caller = tx.from;
+            Address contractAddress = tx.to;
+            Bytes callData = Bytes.wrap(tx.data);
+
+            // Execute the contract call
+            EVMHelper.ExecutionResult result = evm.executeCall(caller, contractAddress, callData);
+
+            if (!result.isSuccess()) {
+                throw new RuntimeException("Transaction failed: " + tx.toString());
+            }
+
+            // Track any new addresses that might have been created (recipient accounts, etc.)
+            trackedAddresses.add(caller.toHexString());
+            trackedAddresses.add(contractAddress.toHexString());
+
+            // Note: Gas fees and signature verification will be added later
+            // Sender nonce is updated automatically by EVM
+        }
+
+        // Step 3: Extract final state from EVM
+        return extractState(evm, trackedAddresses);
     }
 }

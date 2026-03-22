@@ -92,7 +92,7 @@ public class Block {
             }
 
             Address istAddress = Address.fromHexString(IST_COIN_ADDRESS);
-            Bytes istConstructorParams = ABIEncoder.encodeISTCoinConstructor(acAddress, client0HexAddress);
+            Bytes istConstructorParams = ABIEncoder.encodeISTCoinConstructor(acAddress, adminAddress);
             Bytes istDeploymentCode = Bytes.concatenate(
                 Bytes.fromHexString(istCoinBytecode),
                 istConstructorParams
