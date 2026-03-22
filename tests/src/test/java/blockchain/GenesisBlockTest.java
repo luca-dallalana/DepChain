@@ -40,8 +40,13 @@ public class GenesisBlockTest {
         // Verify transactions
         assertEquals(2, genesis.transactions.size(), "Genesis should have 2 deployment transactions");
 
-        // Verify state
-        assertEquals(4, genesis.state.accounts.size(), "Genesis state should have 4 accounts");
+        // Verify state (admin + 2 clients + 2 contracts)
+        assertEquals(5, genesis.state.accounts.size(), "Genesis state should have 5 accounts");
+
+        // Verify admin account exists (used for deploying contracts in genesis)
+        assertTrue(genesis.state.hasAccount(Block.ADMIN_ADDRESS), "Admin account should exist");
+        blockchain.Account adminAccount = genesis.state.getAccount(Block.ADMIN_ADDRESS);
+        assertNotNull(adminAccount, "Admin account should not be null");
 
         // Verify contract addresses exist
         assertTrue(genesis.state.hasAccount(Block.ACCESS_CONTROL_ADDRESS),
@@ -59,6 +64,16 @@ public class GenesisBlockTest {
         assertNotNull(istAccount, "ISTCoin account should exist");
         assertTrue(istAccount.isContract(), "ISTCoin should be a contract");
         assertNotNull(istAccount.getCode(), "ISTCoin should have code");
+
+        // Verify client accounts have nonce=0 (admin deployed contracts, not clients)
+        String client0Addr = blockchain.AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_0/client_0.pubkey");
+        String client1Addr = blockchain.AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_1/client_1.pubkey");
+        blockchain.Account client0Account = genesis.state.getAccount(client0Addr);
+        blockchain.Account client1Account = genesis.state.getAccount(client1Addr);
+        assertNotNull(client0Account, "Client0 account should exist");
+        assertNotNull(client1Account, "Client1 account should exist");
+        assertEquals(0, client0Account.nonce_count, "Client0 should have nonce=0");
+        assertEquals(0, client1Account.nonce_count, "Client1 should have nonce=0");
 
         // Verify file was created
         File genesisFile = new File(genesisPath);

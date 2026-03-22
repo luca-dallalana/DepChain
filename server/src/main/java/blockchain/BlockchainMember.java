@@ -30,12 +30,6 @@ public class BlockchainMember {
         return true; // Implement block validation logic (e.g., check txs, state transitions)
     }
 
-    public static Transaction createTransaction(TransactionRequest request) {
-        // from = getaddress(request.from)
-        // to = getaddress(request.to)
-        return new Transaction();
-    }
-
     public List<Transaction> orderTransactionsForBlock(List<Transaction> transactions) {
         Map<String, Queue<Transaction>> bySender = new HashMap<>();
 
@@ -94,7 +88,7 @@ public class BlockchainMember {
         return storage;
     }
 
-    public static WorldState executeBlock(EVMHelper evm, List<Transaction> transactions, WorldState initialState) {
+    public static WorldState computeState(EVMHelper evm, List<Transaction> transactions, WorldState initialState) {
         Set<String> trackedAddresses = new HashSet<>();
 
         // Track existing accounts from initialState (already loaded in EVM)
@@ -102,39 +96,30 @@ public class BlockchainMember {
             trackedAddresses.add(address);
         }
 
-        // Execute each transaction
-        for (int i = 0; i < transactions.size(); i++) {
-            Transaction tx = transactions.get(i);
-
+        // Execute each transaction (contract calls only)
+        for (Transaction tx : transactions) {
             if (tx.to == null) {
-                // Contract deployment (genesis only - AccessControl at index 0, ISTCoin at index 1)
-                Address deployer = tx.from;
-
-                // Determine contract address based on transaction index (genesis only)
-                Address contractAddr;
-                if (i == 0) {
-                    contractAddr = Address.fromHexString(Block.ACCESS_CONTROL_ADDRESS);
-                } else if (i == 1) {
-                    contractAddr = Address.fromHexString(Block.IST_COIN_ADDRESS);
-                } else {
-                    throw new RuntimeException("Only genesis contracts (AccessControl, ISTCoin) are supported. Transaction index: " + i);
-                }
-
-                Bytes deploymentCode = Bytes.wrap(tx.data);
-
-                boolean deployed = evm.deployContract(deployer, contractAddr, deploymentCode);
-                if (!deployed) {
-                    throw new RuntimeException("Failed to deploy contract at " + contractAddr.toHexString());
-                }
-
-                trackedAddresses.add(contractAddr.toHexString());
-            } else {
-                // Contract call (not needed for genesis, implement later for regular blocks)
-                throw new RuntimeException("Contract calls not yet implemented in executeBlock()");
+                // Contract deployment not supported in executeBlock (only in genesis setup)
+                throw new RuntimeException("Contract deployment must be done in genesis setup, not via executeBlock()");
             }
 
+            // Contract call
+            Address caller = tx.from;
+            Address contractAddress = tx.to;
+            Bytes callData = Bytes.wrap(tx.data);
+
+            // Execute the contract call
+            EVMHelper.ExecutionResult result = evm.executeCall(caller, contractAddress, callData);
+
+            if (!result.isSuccess()) {
+                throw new RuntimeException("Transaction failed: " + tx.toString());
+            }
+
+            trackedAddresses.add(caller.toHexString());
+            trackedAddresses.add(contractAddress.toHexString());
+
             // Note: Gas fees and signature verification will be added later
-            // For genesis: gasPrice = 0 (no fees), signature = null (trusted)
+            // Sender nonce is updated automatically by EVM
         }
 
         // Extract final state from EVM

@@ -16,10 +16,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class Block {
     public static final String ACCESS_CONTROL_ADDRESS = "0x1234567891234567891234567891234567891234";
     public static final String IST_COIN_ADDRESS = "0x5555555555555555555555555555555555555555";
+    public static final String ADMIN_ADDRESS = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     public String blockHash;            // Block hash (hex)
     public String parentBlockHash;    // Previous block (null for genesis)
@@ -53,35 +55,61 @@ public class Block {
             // 1. Generate client addresses from public keys
             String client0Addr = AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_0/client_0.pubkey");
             String client1Addr = AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_1/client_1.pubkey");
+            Address client0HexAddress = Address.fromHexString(client0Addr);
+            Address client1HexAddress = Address.fromHexString(client1Addr);
 
-            // 2. Create EVM and initialize with member EOA accounts (static membership)
+            // 2. Create EVM and initialize accounts
             EVMHelper evm = new EVMHelper();
-            evm.createAccount(Address.fromHexString(client0Addr), Wei.of(100000));
-            evm.createAccount(Address.fromHexString(client1Addr), Wei.of(100000));
 
-            // 3. Create initial state with member EOAs (before contract deployment)
-            WorldState initialState = new WorldState();
-            initialState.putAccount(client0Addr, new Account(client0Addr, 100000, 0));
-            initialState.putAccount(client1Addr, new Account(client1Addr, 100000, 0));
+            // Admin account for contract deployment (keeps client nonces clean)
+            Address adminAddress = Address.fromHexString(ADMIN_ADDRESS);
+            evm.createAccount(adminAddress, Wei.of(1000000));
 
-            // 4. Load contract bytecode
+            // Member EOA accounts (static membership)
+            evm.createAccount(client0HexAddress, Wei.of(100000));
+            evm.createAccount(client1HexAddress, Wei.of(100000));
+
+            // 3. Load contract bytecode
             String accessControlBytecode = BytecodeLoader.loadBytecode("AccessControl");
             String istCoinBytecode = BytecodeLoader.loadBytecode("ISTCoin");
 
-            // 5. Create deployment transactions
-            List<Transaction> transactions = new ArrayList<>();
-
-            // AccessControl deployment transaction
+            // 4. Deploy contracts manually (genesis-only setup, admin deploys)
             Address acAddress = Address.fromHexString(ACCESS_CONTROL_ADDRESS);
             Bytes acConstructorParams = ABIEncoder.encodeAccessControlConstructor(
-                new Address[]{Address.fromHexString(client0Addr), Address.fromHexString(client1Addr)}
+                new Address[]{client0HexAddress, client1HexAddress}
             );
             Bytes acDeploymentCode = Bytes.concatenate(
                 Bytes.fromHexString(accessControlBytecode),
                 acConstructorParams
             );
-            Transaction acDeployTx = new Transaction(
-                Address.fromHexString(client0Addr),
+            boolean acDeployed = evm.deployContract(
+                adminAddress,
+                acAddress,
+                acDeploymentCode
+            );
+            if (!acDeployed) {
+                throw new RuntimeException("Failed to deploy AccessControl contract");
+            }
+
+            Address istAddress = Address.fromHexString(IST_COIN_ADDRESS);
+            Bytes istConstructorParams = ABIEncoder.encodeISTCoinConstructor(acAddress, client0HexAddress);
+            Bytes istDeploymentCode = Bytes.concatenate(
+                Bytes.fromHexString(istCoinBytecode),
+                istConstructorParams
+            );
+            boolean istDeployed = evm.deployContract(
+                adminAddress,
+                istAddress,
+                istDeploymentCode
+            );
+            if (!istDeployed) {
+                throw new RuntimeException("Failed to deploy ISTCoin contract");
+            }
+
+            // 5. Create deployment transactions (for record-keeping in genesis block)
+            List<Transaction> transactions = new ArrayList<>();
+            transactions.add(new Transaction(
+                adminAddress,
                 null,  // Contract deployment
                 0,     // No value transfer
                 acDeploymentCode.toArray(),
@@ -89,18 +117,9 @@ public class Block {
                 0,         // Gas price (free for genesis)
                 0,         // Nonce
                 null       // No signature (trusted genesis)
-            );
-            transactions.add(acDeployTx);
-
-            // ISTCoin deployment transaction
-            Address istAddress = Address.fromHexString(IST_COIN_ADDRESS);
-            Bytes istConstructorParams = ABIEncoder.encodeISTCoinConstructor(acAddress, Address.fromHexString(client0Addr));
-            Bytes istDeploymentCode = Bytes.concatenate(
-                Bytes.fromHexString(istCoinBytecode),
-                istConstructorParams
-            );
-            Transaction istDeployTx = new Transaction(
-                Address.fromHexString(client0Addr),
+            ));
+            transactions.add(new Transaction(
+                adminAddress,
                 null,  // Contract deployment
                 0,     // No value transfer
                 istDeploymentCode.toArray(),
@@ -108,11 +127,38 @@ public class Block {
                 0,         // Gas price (free for genesis)
                 1,         // Nonce
                 null       // No signature (trusted genesis)
-            );
-            transactions.add(istDeployTx);
+            ));
 
-            // 6. Execute block to get final state (transactions drive execution)
-            WorldState finalState = BlockchainMember.executeBlock(evm, transactions, initialState);
+            // 6. Extract final state from EVM after manual deployment
+            WorldState finalState = new WorldState();
+            Set<String> trackedAddresses = Set.of(
+                ADMIN_ADDRESS,
+                client0Addr,
+                client1Addr,
+                ACCESS_CONTROL_ADDRESS,
+                IST_COIN_ADDRESS
+            );
+
+            for (String addrStr : trackedAddresses) {
+                Address addr = Address.fromHexString(addrStr);
+                org.hyperledger.besu.evm.account.MutableAccount besuAccount =
+                    (org.hyperledger.besu.evm.account.MutableAccount) evm.world.get(addr);
+
+                if (besuAccount == null) continue;
+
+                long balance = besuAccount.getBalance().toLong();
+                long nonce = besuAccount.getNonce();
+
+                if (besuAccount.getCode() == null || besuAccount.getCode().isEmpty()) {
+                    // EOA
+                    finalState.putAccount(addrStr, new Account(addrStr, balance, nonce));
+                } else {
+                    // Contract
+                    byte[] code = besuAccount.getCode().toArray();
+                    Map<String, String> storage = BlockchainMember.extractStoragePublic(evm, addr);
+                    finalState.putAccount(addrStr, new Account(addrStr, balance, nonce, code, storage));
+                }
+            }
 
             System.out.println("AccessControl deployed at: " + ACCESS_CONTROL_ADDRESS);
             System.out.println("ISTCoin deployed at: " + IST_COIN_ADDRESS);
