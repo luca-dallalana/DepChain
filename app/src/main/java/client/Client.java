@@ -23,8 +23,7 @@ public class Client implements DeliveryListener{
     private boolean running = true;
     private NetworkLayerLib networkLayerLib;
     private UdpReceiver receiver;
-    private ConcurrentHashMap<Integer, String> receivedDecided = new ConcurrentHashMap<>(); //maps port -> decided command
-    private boolean decided = false;
+    private final ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, String>> pendingDecisions = new ConcurrentHashMap<>();
     private int sequenceNumber = 0;
 
     public Client(ClientConfig config, DatagramSocket socket) {
@@ -83,7 +82,7 @@ public class Client implements DeliveryListener{
                     );
 
                     try {
-                        sendMessageAndWaitForDecision(DepCoinTransferRequest);
+                        sendTransaction(DepCoinTransferRequest);
                     } catch (Exception e) {
                         System.err.println("Error sending DepCoin transfer: " + e.getMessage());
                     }
@@ -112,7 +111,7 @@ public class Client implements DeliveryListener{
                     );
 
                     try {
-                        sendMessageAndWaitForDecision(istCoinTransferRequest);
+                        sendTransaction(istCoinTransferRequest);
                     } catch (Exception e) {
                         System.err.println("Error sending ISTCoin transfer: " + e.getMessage());
                     }
@@ -146,7 +145,7 @@ public class Client implements DeliveryListener{
                     );
 
                     try {
-                        sendMessageAndWaitForDecision(approveRequest);
+                        sendTransaction(approveRequest);
                     } catch (Exception e) {
                         System.err.println("Error sending approve: " + e.getMessage());
                     }
@@ -175,7 +174,7 @@ public class Client implements DeliveryListener{
                         null
                     );
                     try {
-                        sendMessageAndWaitForDecision(transferFromRequest);
+                        sendTransaction(transferFromRequest);
                     } catch (Exception e) {
                         System.err.println("Error sending transferFrom: " + e.getMessage());
                     }
@@ -186,13 +185,9 @@ public class Client implements DeliveryListener{
         }
     }
 
-    private void sendMessageAndWaitForDecision(Transaction request) throws Exception {
+    private void sendTransaction(Transaction request) throws Exception {
+        pendingDecisions.put((int) request.nonce_count, new ConcurrentHashMap<>());
         sendMessage(request);
-        while (!decided) {
-            Thread.sleep(100);
-        }
-        decided = false;
-        receivedDecided.clear();
     }
 
     private void sendMessage(Transaction request) throws java.io.IOException {
@@ -224,23 +219,30 @@ public class Client implements DeliveryListener{
                 payload = payload.substring(idx + 1);
             }
         }
-        if (payload.startsWith("DECIDED=")) {
-            String reply = payload.substring("DECIDED=".length());
+        if (payload.startsWith("DECIDED=")) { // DECIDED=5;REPLY=OK //FIXME maybe send a json
+            String[] parts = payload.split(";");
+            String seqNum = parts[1].split("=")[1];
+            String reply = parts[2].split("=")[1];
             System.out.println("Received reply: " + reply);
-            addDecidedCommand(senderPort, reply);
+            registerDecidedReply(Integer.parseInt(seqNum), senderPort, reply);
         }
     }
 
-    private void addDecidedCommand(int port, String command) {
-        if (receivedDecided.containsKey(port)) return;
-        receivedDecided.put(port, command);
-        long count = receivedDecided.values().stream()
-            .filter(c -> c.equals(command)).count();
-        if (count >= config.getF() + 1){
-            decided = true;
-            System.out.println("The command: " + command + " was decided.");
+    private void registerDecidedReply(int sequence, int senderPort, String reply) {
+        ConcurrentHashMap<Integer, String> repliesByReplica = pendingDecisions.get(sequence);
+        if (repliesByReplica == null) {
+            return;
         }
-        
+
+        if (repliesByReplica.putIfAbsent(senderPort, reply) == null) {
+            long matchingReplies = repliesByReplica.values().stream()
+                .filter(reply::equals)
+                .count();
+            if (matchingReplies >= config.getF() + 1){
+                System.out.println("Transaction seq=" + sequence + " decided: " + reply);
+                pendingDecisions.remove(sequence, repliesByReplica);
+            }
+        }
     }
 
     private Address readClientId(Scanner scanner, String prompt) {
