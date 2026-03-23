@@ -236,12 +236,12 @@ public class DepChainMember implements DeliveryListener{
 
             Block maxQCBlock = blockStore.getBlockByHash(maxQC.blockHash);//FIXME this could go wrong if leader doesn't have the block
 
-            if (memberConfig.getPendingCommands().isEmpty()) {
+            if (memberConfig.getPendingCommands().isEmpty()) { // FIXME: fica dificil propor no-op sem no-op
                 System.out.println("No pending client commands, proposing NO-OP");
-                curProposal = BlockchainMember.buildBlock(memberConfig.getPendingTransactions());
+                curProposal = BlockchainMember.buildBlock(maxQCBlock, memberConfig.getPendingTransactions());
             } else {
                 System.out.println("Processing pending client command " + memberConfig.getPendingCommands());
-                curProposal = BlockchainMember.buildBlock(memberConfig.getPendingTransactions()); // FIXME diogo maybe put the block only on maxQC not the hash
+                curProposal = BlockchainMember.buildBlock(maxQCBlock, memberConfig.getPendingTransactions());
             }
 
             this.currentProposal = curProposal; // Store for QC formation
