@@ -22,14 +22,44 @@ public class BlockchainMember {
     public static void executeBlock(Block block){}
 
     // Consensus calls this to get the next block to propose
-    public static Block buildBlock(List<Transaction> pendingTxs){
+    public static Block buildBlock(Block parent, List<Transaction> pendingTxs) throws Exception {
         List<Transaction> orderedTxs = orderTransactionsForBlock(pendingTxs);
-        return new Block();
+        EVMHelper evm = new EVMHelper();
+        WorldState newState = computeState(evm, orderedTxs, parent.state);
+        return Block.createLeaf(parent, orderedTxs, newState);
     }
 
     // Consensus calls this to validate a proposed block before voting
-    public boolean isValidBlock(Block block){
-        return true; // Implement block validation logic (e.g., check txs, state transitions)
+    public static boolean isValidBlock(Block block, Block parent) {
+        try {
+            if (parent == null) return false;
+            if (!block.parentBlockHash.equals(parent.depHash())) return false;
+            if (block.blockNumber != parent.blockNumber + 1) return false;
+
+            EVMHelper evm = new EVMHelper();
+            WorldState computedState = computeState(evm, block.transactions, parent.state);
+
+            if (!statesEqual(computedState, block.state)) return false;
+
+            String computedHash = block.depHash();
+            if (!computedHash.equals(block.blockHash)) return false;
+
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean statesEqual(WorldState s1, WorldState s2) {
+        if (s1.accounts.size() != s2.accounts.size()) return false;
+        for (String addr : s1.accounts.keySet()) {
+            Account a1 = s1.accounts.get(addr);
+            Account a2 = s2.accounts.get(addr);
+            if (a2 == null) return false;
+            if (a1.balance != a2.balance) return false;
+            if (a1.nonce_count != a2.nonce_count) return false;
+        }
+        return true;
     }
 
     public static List<Transaction> orderTransactionsForBlock(List<Transaction> transactions) {

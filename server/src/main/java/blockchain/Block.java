@@ -31,17 +31,15 @@ public class Block {
     public String parentBlockHash;    // Previous block (null for genesis)
     public List<Transaction> transactions;
     public WorldState state;            // World state after executing txs
-    public long timestamp;
     public long blockNumber;            // Height in blockchain
 
     public Block(String blockHash, String parentBlockHash,
                 List<Transaction> transactions, WorldState state,
-                long timestamp, long blockNumber) {
+                long blockNumber) {
         this.blockHash = blockHash;
         this.parentBlockHash = parentBlockHash;
         this.transactions = transactions != null ? transactions : new ArrayList<>();
         this.state = state;
-        this.timestamp = timestamp;
         this.blockNumber = blockNumber;
     }
 
@@ -61,7 +59,6 @@ public class Block {
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         writeString(baos, parentBlockHash);
-        writeLong(baos, timestamp);
         writeLong(baos, blockNumber);
 
         if (transactions != null) {
@@ -84,7 +81,7 @@ public class Block {
         return "0x" + AddressUtils.bytesToHex(hash);
     }
 
-    public static Block createLeaf(Block parent, List<Transaction> transactions, WorldState state, long timestamp)
+    public static Block createLeaf(Block parent, List<Transaction> transactions, WorldState state)
             throws Exception {
         if (parent == null) {
             throw new IllegalArgumentException("Parent block cannot be null");
@@ -95,7 +92,6 @@ public class Block {
             parent.depHash(),
             transactions,
             state,
-            timestamp,
             parent.blockNumber + 1
         );
         leaf.blockHash = leaf.depHash();
@@ -223,7 +219,6 @@ public class Block {
                 null,          // parentBlockHash
                 transactions,
                 finalState,
-                0,             // timestamp
                 0              // blockNumber
             );
 
