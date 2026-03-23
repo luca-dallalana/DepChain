@@ -13,6 +13,8 @@ import blockchain.evm.EVMHelper;
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.evm.account.MutableAccount;
+
 
 public class BlockchainMember {
 
@@ -70,8 +72,7 @@ public class BlockchainMember {
 
     public static Map<String, String> extractStoragePublic(EVMHelper evm, Address contractAddress) {
         Map<String, String> storage = new HashMap<>();
-        org.hyperledger.besu.evm.account.MutableAccount mutableAccount =
-            (org.hyperledger.besu.evm.account.MutableAccount) evm.world.get(contractAddress);
+        MutableAccount mutableAccount = (MutableAccount) evm.world.get(contractAddress);
 
         if (mutableAccount == null) {
             return storage;
@@ -98,8 +99,7 @@ public class BlockchainMember {
             evm.createAccount(addr, Wei.of(account.balance));
 
             // Get the mutable account to set additional properties
-            org.hyperledger.besu.evm.account.MutableAccount besuAccount =
-                (org.hyperledger.besu.evm.account.MutableAccount) evm.world.get(addr);
+            MutableAccount besuAccount = (MutableAccount) evm.world.get(addr);
 
             if (besuAccount != null) {
                 for (int i = 0; i < account.nonce_count; i++) {
@@ -131,8 +131,7 @@ public class BlockchainMember {
 
         for (String addrStr : trackedAddresses) {
             Address addr = Address.fromHexString(addrStr);
-            org.hyperledger.besu.evm.account.MutableAccount besuAccount =
-                (org.hyperledger.besu.evm.account.MutableAccount) evm.world.get(addr);
+            MutableAccount besuAccount = (MutableAccount) evm.world.get(addr);
 
             if (besuAccount == null) {
                 continue;
@@ -164,31 +163,59 @@ public class BlockchainMember {
         // Track all existing addresses from initial state
         trackedAddresses.addAll(initialState.accounts.keySet());
 
-        // Step 2: Execute each transaction 
+        // Step 2: Execute each transaction
         for (Transaction tx : transactions) {
             if (tx.to == null) {
                 // Contract deployment not supported in computeState (only in genesis setup)
                 throw new RuntimeException("Contract deployment must be done in genesis setup, not via computeState()");
             }
 
-            // Contract call
-            Address caller = tx.from;
-            Address contractAddress = tx.to;
-            Bytes callData = Bytes.wrap(tx.data);
+            MutableAccount senderAccount = (MutableAccount) evm.world.get(tx.from);
+            if (senderAccount == null) throw new RuntimeException("Sender account does not exist");
+            if (tx.getGasPrice() <= 0 || tx.getGasLimit() <= 0) throw new RuntimeException("Gas price and limit must be positive");
+            if (senderAccount.getNonce() != tx.getNonce()) throw new RuntimeException("Invalid nonce");
 
-            // Execute the contract call
-            EVMHelper.ExecutionResult result = evm.executeCall(caller, contractAddress, callData);
+            long maxCost = tx.getValue() + (tx.getGasPrice() * tx.getGasLimit());
+            if (senderAccount.getBalance().toLong() < maxCost) throw new RuntimeException("Insufficient balance");
 
-            if (!result.isSuccess()) {
-                throw new RuntimeException("Transaction failed: " + tx.toString());
+            boolean isNativeTransfer = (tx.getData() == null || tx.getData().length == 0);
+            long gasUsed;
+
+            if (isNativeTransfer) {
+                MutableAccount recipientAccount = (MutableAccount) evm.world.get(tx.to);
+                if (recipientAccount == null) {
+                    evm.createAccount(tx.to, Wei.ZERO);
+                    recipientAccount = (MutableAccount) evm.world.get(tx.to);
+                    trackedAddresses.add(tx.to.toHexString());
+                }
+
+                if (tx.getValue() > 0) {
+                    senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getValue())));
+                    recipientAccount.setBalance(recipientAccount.getBalance().add(Wei.of(tx.getValue())));
+                }
+
+                senderAccount.incrementNonce();
+                gasUsed = 21000; // Fixed gas cost for native transfer FIXME: talvez mudar
+
+            } else {
+                EVMHelper.ExecutionResult result = evm.executeCall(tx.from, tx.to, Bytes.wrap(tx.getData()));
+                gasUsed = result.getGasUsed();
+
+                if (gasUsed > tx.getGasLimit()) {
+                    senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));
+                    senderAccount.incrementNonce();
+                    trackedAddresses.add(tx.from.toHexString());
+                    System.out.println("Transaction failed due to lack of gas");
+                    continue;
+                }
+
+                if (!result.isSuccess()) throw new RuntimeException("Contract call failed");
+                senderAccount.incrementNonce();
             }
 
-            // Track any new addresses that might have been created (recipient accounts, etc.)
-            trackedAddresses.add(caller.toHexString());
-            trackedAddresses.add(contractAddress.toHexString());
-
-            // Note: Gas fees and signature verification will be added later
-            // Sender nonce is updated automatically by EVM
+            senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
+            trackedAddresses.add(tx.from.toHexString());
+            trackedAddresses.add(tx.to.toHexString());
         }
 
         // Step 3: Extract final state from EVM

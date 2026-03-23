@@ -1,0 +1,294 @@
+package blockchain;
+
+import blockchain.evm.ABIEncoder;
+import blockchain.evm.EVMHelper;
+import org.apache.tuweni.bytes.Bytes;
+import org.hyperledger.besu.datatypes.Address;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+public class TransactionExecutionTest {
+
+    private WorldState genesisState;
+    private Address client0;
+    private Address client1;
+    private Address newAccount;
+    private Address istCoinAddress;
+
+    @BeforeEach
+    public void setup() {
+        String projectRoot = "/Users/lucagrespandallalana/Documents/IST/SD/SEC/Project/SEC_project";
+
+        // Generate client addresses
+        String client0Addr = AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_0/client_0.pubkey");
+        String client1Addr = AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_1/client_1.pubkey");
+
+        client0 = Address.fromHexString(client0Addr);
+        client1 = Address.fromHexString(client1Addr);
+        newAccount = Address.fromHexString("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        istCoinAddress = Address.fromHexString(Block.IST_COIN_ADDRESS);
+
+        // Load genesis state
+        Block genesis = Block.createAndSaveGenesis(projectRoot);
+        genesisState = genesis.state;
+
+        System.out.println("\n=== Test Setup Complete ===");
+        System.out.println("Client0: " + client0.toHexString());
+        System.out.println("Client0 initial balance: " + genesisState.getAccount(client0.toHexString()).balance + " DepCoin");
+        System.out.println("Client1: " + client1.toHexString());
+        System.out.println("Client1 initial balance: " + genesisState.getAccount(client1.toHexString()).balance + " DepCoin\n");
+    }
+
+    @Test
+    public void testNativeDepCoinTransfer() {
+        System.out.println("=== Test: Native DepCoin Transfer ===\n");
+
+        EVMHelper evm = new EVMHelper();
+        List<Transaction> transactions = new ArrayList<>();
+
+        // Client0 sends 1000 DepCoin to Client1
+        long transferAmount = 1000;
+        long gasPrice = 1;
+        long gasLimit = 21000;
+
+        Transaction tx = new Transaction(
+            client0,
+            client1,
+            transferAmount,
+            new byte[0],  // Empty data = native transfer
+            gasLimit,
+            gasPrice,
+            0,  // nonce
+            null
+        );
+        transactions.add(tx);
+
+        // Execute transaction
+        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
+
+        // Verify balances
+        Account client0Final = finalState.getAccount(client0.toHexString());
+        Account client1Final = finalState.getAccount(client1.toHexString());
+
+        long client0InitialBalance = genesisState.getAccount(client0.toHexString()).balance;
+        long client1InitialBalance = genesisState.getAccount(client1.toHexString()).balance;
+
+        long gasFee = gasPrice * 21000;  // Native transfer uses 21,000 gas
+
+        assertEquals(client0InitialBalance - transferAmount - gasFee, client0Final.balance,
+            "Client0 balance should decrease by transfer amount + gas fee");
+        assertEquals(client1InitialBalance + transferAmount, client1Final.balance,
+            "Client1 balance should increase by transfer amount");
+
+        // Verify nonce incremented
+        assertEquals(1, client0Final.nonce_count, "Client0 nonce should be 1 after transaction");
+
+        System.out.println("Client0 final balance: " + client0Final.balance + " DepCoin (sent " + transferAmount + " + " + gasFee + " gas)");
+        System.out.println("Client1 final balance: " + client1Final.balance + " DepCoin (received " + transferAmount + ")");
+        System.out.println("Test PASSED\n");
+    }
+
+    @Test
+    public void testAutoCreateEOA() {
+        System.out.println("=== Test: Auto-Create EOA Account ===\n");
+
+        EVMHelper evm = new EVMHelper();
+        List<Transaction> transactions = new ArrayList<>();
+
+        // Verify new account doesn't exist initially
+        assertFalse(genesisState.hasAccount(newAccount.toHexString()),
+            "New account should not exist in genesis");
+
+        // Client0 sends DepCoin to non-existent account
+        Transaction tx = new Transaction(
+            client0,
+            newAccount,
+            5000,
+            new byte[0],
+            21000,
+            1,
+            0,
+            null
+        );
+        transactions.add(tx);
+
+        // Execute transaction
+        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
+
+        // Verify new account was created
+        assertTrue(finalState.hasAccount(newAccount.toHexString()),
+            "New account should be created automatically");
+
+        Account newAcct = finalState.getAccount(newAccount.toHexString());
+        assertEquals(5000, newAcct.balance, "New account should have received 5000 DepCoin");
+        assertEquals(0, newAcct.nonce_count, "New account should have nonce 0");
+        assertFalse(newAcct.isContract(), "New account should be EOA, not contract");
+
+        System.out.println("New account created: " + newAccount.toHexString());
+        System.out.println("New account balance: " + newAcct.balance + " DepCoin");
+        System.out.println("Test PASSED\n");
+    }
+
+    @Test
+    public void testInvalidNonce() {
+        System.out.println("=== Test: Invalid Nonce Rejection ===\n");
+
+        EVMHelper evm = new EVMHelper();
+        List<Transaction> transactions = new ArrayList<>();
+
+        // Create transaction with wrong nonce (should be 0, but using 5)
+        Transaction tx = new Transaction(
+            client0,
+            client1,
+            1000,
+            new byte[0],
+            21000,
+            1,
+            5,  // Wrong nonce!
+            null
+        );
+        transactions.add(tx);
+
+        // Execute should throw exception
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+            BlockchainMember.computeState(evm, transactions, genesisState);
+        });
+
+        assertTrue(exception.getMessage().contains("Invalid nonce"),
+            "Exception should mention invalid nonce");
+        System.out.println("Exception caught: " + exception.getMessage());
+        System.out.println("Test PASSED\n");
+    }
+
+    @Test
+    public void testInsufficientBalance() {
+        System.out.println("=== Test: Insufficient Balance Rejection ===\n");
+
+        EVMHelper evm = new EVMHelper();
+        List<Transaction> transactions = new ArrayList<>();
+
+        long client0Balance = genesisState.getAccount(client0.toHexString()).balance;
+
+        // Try to send more than available (including gas)
+        Transaction tx = new Transaction(
+            client0,
+            client1,
+            client0Balance,  // Send entire balance, but won't have enough for gas!
+            new byte[0],
+            21000,
+            1,
+            0,
+            null
+        );
+        transactions.add(tx);
+
+        // Execute should throw exception
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+            BlockchainMember.computeState(evm, transactions, genesisState);
+        });
+
+        assertTrue(exception.getMessage().contains("Insufficient balance"),
+            "Exception should mention insufficient balance");
+        System.out.println("Exception caught: " + exception.getMessage());
+        System.out.println("Test PASSED\n");
+    }
+
+    @Test
+    public void testContractCallWithGas() {
+        System.out.println("=== Test: Contract Call with Gas Deduction ===\n");
+
+        EVMHelper evm = new EVMHelper();
+        List<Transaction> transactions = new ArrayList<>();
+
+        // Call ISTCoin.balanceOf(admin) to verify contract call works
+        Address admin = Address.fromHexString(Block.ADMIN_ADDRESS);
+        Bytes callData = ABIEncoder.encodeBalanceOf(admin);
+
+        long gasPrice = 1;
+        long gasLimit = 100000;  // Reduced to fit within client0's balance
+
+        Transaction tx = new Transaction(
+            client0,
+            istCoinAddress,
+            0,  // No DepCoin transfer
+            callData.toArray(),
+            gasLimit,
+            gasPrice,
+            0,
+            null
+        );
+        transactions.add(tx);
+
+        long client0InitialBalance = genesisState.getAccount(client0.toHexString()).balance;
+
+        // Execute transaction
+        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
+
+        // Verify gas was deducted
+        Account client0Final = finalState.getAccount(client0.toHexString());
+        long gasFee = 1 * 100000;  // gasPrice=1, gasUsed=100,000 (estimated for contract calls)
+
+        assertEquals(client0InitialBalance - gasFee, client0Final.balance,
+            "Client0 balance should decrease by gas fee only");
+
+        // Verify nonce incremented
+        assertEquals(1, client0Final.nonce_count, "Client0 nonce should be 1 after contract call");
+
+        System.out.println("Client0 balance after contract call: " + client0Final.balance + " DepCoin");
+        System.out.println("Gas fee paid: " + gasFee + " DepCoin");
+        System.out.println("Test PASSED\n");
+    }
+
+    @Test
+    public void testMultipleTransactionsWithNonceSequence() {
+        System.out.println("=== Test: Multiple Transactions with Nonce Sequence ===\n");
+
+        EVMHelper evm = new EVMHelper();
+        List<Transaction> transactions = new ArrayList<>();
+
+        // Client0 sends 3 transactions with nonces 0, 1, 2
+        for (int i = 0; i < 3; i++) {
+            Transaction tx = new Transaction(
+                client0,
+                client1,
+                100,  // Send 100 DepCoin each time
+                new byte[0],
+                21000,
+                1,
+                i,  // Nonce sequence
+                null
+            );
+            transactions.add(tx);
+        }
+
+        long client0InitialBalance = genesisState.getAccount(client0.toHexString()).balance;
+        long client1InitialBalance = genesisState.getAccount(client1.toHexString()).balance;
+
+        // Execute all transactions
+        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
+
+        // Verify results
+        Account client0Final = finalState.getAccount(client0.toHexString());
+        Account client1Final = finalState.getAccount(client1.toHexString());
+
+        long totalTransferred = 300;  // 100 * 3
+        long totalGasFees = 21000 * 3 * 1;  // 21000 gas * 3 txs * 1 gasPrice
+
+        assertEquals(client0InitialBalance - totalTransferred - totalGasFees, client0Final.balance,
+            "Client0 should have sent 300 DepCoin + gas fees");
+        assertEquals(client1InitialBalance + totalTransferred, client1Final.balance,
+            "Client1 should have received 300 DepCoin");
+        assertEquals(3, client0Final.nonce_count, "Client0 nonce should be 3 after 3 transactions");
+
+        System.out.println("Client0 executed 3 transactions successfully");
+        System.out.println("Client0 final nonce: " + client0Final.nonce_count);
+        System.out.println("Total transferred: " + totalTransferred + " DepCoin");
+        System.out.println("Total gas fees: " + totalGasFees + " DepCoin");
+        System.out.println("Test PASSED\n");
+    }
+}

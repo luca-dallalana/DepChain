@@ -8,6 +8,7 @@ import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
 import blockchain.AddressUtils;
+import org.hyperledger.besu.evm.account.MutableAccount;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -194,8 +195,7 @@ public class Block {
 
             for (String addrStr : trackedAddresses) {
                 Address addr = Address.fromHexString(addrStr);
-                org.hyperledger.besu.evm.account.MutableAccount besuAccount =
-                    (org.hyperledger.besu.evm.account.MutableAccount) evm.world.get(addr);
+                MutableAccount besuAccount = (MutableAccount) evm.world.get(addr);
 
                 if (besuAccount == null) continue;
 

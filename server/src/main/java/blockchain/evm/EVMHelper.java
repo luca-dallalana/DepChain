@@ -24,14 +24,17 @@ public class EVMHelper {
     public static class ExecutionResult {
         private final boolean success;
         private final Bytes returnData;
+        private final long gasUsed;
 
-        public ExecutionResult(boolean success, Bytes returnData) {
+        public ExecutionResult(boolean success, Bytes returnData, long gasUsed) {
             this.success = success;
             this.returnData = returnData;
+            this.gasUsed = gasUsed;
         }
 
         public boolean isSuccess() { return success; }
         public Bytes getReturnData() { return returnData; }
+        public long getGasUsed() { return gasUsed; }
     }
 
     public EVMHelper() {
@@ -80,10 +83,10 @@ public class EVMHelper {
         clearTrace();
 
         var account = world.get(contract);
-        if (account == null) return new ExecutionResult(false, Bytes.EMPTY);
+        if (account == null) return new ExecutionResult(false, Bytes.EMPTY, 0);
 
         Bytes code = account.getCode();
-        if (code == null || code.isEmpty()) return new ExecutionResult(false, Bytes.EMPTY);
+        if (code == null || code.isEmpty()) return new ExecutionResult(false, Bytes.EMPTY, 0);
 
         var executor = createExecutor();
         executor.code(code);
@@ -92,12 +95,15 @@ public class EVMHelper {
         executor.callData(callData);
         executor.execute();
 
+        // Extract gas used
+        long gasUsed = extractGasUsedFromTrace();
+
         // Check for success: must have RETURN and no REVERT REDUNDANT VERIFICATION
         if (hasOpcode("REVERT", "253", "INVALID", "254") || !hasOpcode("RETURN", "243")) {
-            return new ExecutionResult(false, Bytes.EMPTY);
+            return new ExecutionResult(false, Bytes.EMPTY, gasUsed);
         }
 
-        return new ExecutionResult(true, extractReturnDataFromTrace());
+        return new ExecutionResult(true, extractReturnDataFromTrace(), gasUsed);
     }
 
     public BigInteger extractUint256FromReturnData() {
@@ -163,6 +169,23 @@ public class EVMHelper {
             return Bytes.fromHexString(memory.substring(2 + offset * 2, 2 + offset * 2 + size * 2));
         } catch (Exception e) {
             return Bytes.EMPTY;
+        }
+    }
+
+    private long extractGasUsedFromTrace() {
+        try {
+            String[] lines = traceOutput.toString().split("\\r?\\n");
+            if (lines.length == 0) return 0;
+
+            JsonObject firstLine = JsonParser.parseString(lines[0]).getAsJsonObject();
+            JsonObject lastLine = JsonParser.parseString(lines[lines.length - 1]).getAsJsonObject();
+
+            long initialGas = Long.decode(firstLine.get("gas").getAsString());
+            long finalGas = Long.decode(lastLine.get("gas").getAsString());
+
+            return initialGas - finalGas;
+        } catch (Exception e) {
+            return 0;
         }
     }
 
