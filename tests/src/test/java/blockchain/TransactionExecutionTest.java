@@ -57,6 +57,7 @@ public class TransactionExecutionTest {
         long gasLimit = 21000;
 
         Transaction tx = new Transaction(
+            -1,
             client0,
             client1,
             transferAmount,
@@ -106,6 +107,7 @@ public class TransactionExecutionTest {
 
         // Client0 sends DepCoin to non-existent account
         Transaction tx = new Transaction(
+            -1,
             client0,
             newAccount,
             5000,
@@ -143,6 +145,7 @@ public class TransactionExecutionTest {
 
         // Create transaction with wrong nonce (should be 0, but using 5)
         Transaction tx = new Transaction(
+            -1,
             client0,
             client1,
             1000,
@@ -176,6 +179,7 @@ public class TransactionExecutionTest {
 
         // Try to send more than available (including gas)
         Transaction tx = new Transaction(
+            -1,
             client0,
             client1,
             client0Balance,  // Send entire balance, but won't have enough for gas!
@@ -213,6 +217,7 @@ public class TransactionExecutionTest {
         long gasLimit = 100000;  // Reduced to fit within client0's balance
 
         Transaction tx = new Transaction(
+            -1,
             client0,
             istCoinAddress,
             0,  // No DepCoin transfer
@@ -254,6 +259,7 @@ public class TransactionExecutionTest {
         // Client0 sends 3 transactions with nonces 0, 1, 2
         for (int i = 0; i < 3; i++) {
             Transaction tx = new Transaction(
+                -1,
                 client0,
                 client1,
                 100,  // Send 100 DepCoin each time

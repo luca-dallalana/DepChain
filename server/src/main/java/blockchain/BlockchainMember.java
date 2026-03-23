@@ -165,10 +165,10 @@ public class BlockchainMember {
 
         // Step 2: Execute each transaction
         for (Transaction tx : transactions) {
-            if (tx.to == null) {
-                // Contract deployment not supported in computeState (only in genesis setup)
-                throw new RuntimeException("Contract deployment must be done in genesis setup, not via computeState()");
-            }
+            if (tx.to == null) throw new RuntimeException("Contract deployment must be done in genesis setup, not via computeState()");
+
+            // TODO: Signature verification requires public key recovery or address->pubkey mapping
+            // if (tx.signature != null && !verifySignature(tx)) throw new RuntimeException("Invalid signature");
 
             MutableAccount senderAccount = (MutableAccount) evm.world.get(tx.from);
             if (senderAccount == null) throw new RuntimeException("Sender account does not exist");
@@ -209,7 +209,13 @@ public class BlockchainMember {
                     continue;
                 }
 
-                if (!result.isSuccess()) throw new RuntimeException("Contract call failed");
+                if (!result.isSuccess()) {
+                    senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
+                    senderAccount.incrementNonce();
+                    trackedAddresses.add(tx.from.toHexString());
+                    System.out.println("Contract call failed");
+                    continue;
+                }
                 senderAccount.incrementNonce();
             }
 
