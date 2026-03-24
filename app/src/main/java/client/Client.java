@@ -1,12 +1,16 @@
 package client;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.net.DatagramSocket;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 
+import blockchain.GetBalance;
 import blockchain.Transaction;
 import blockchain.evm.ABIEncoder;
 import config.ClientConfig;
@@ -47,7 +51,9 @@ public class Client implements DeliveryListener{
         System.out.println("  1 - ISTCoin Transfer (contract)");
         System.out.println("  2 - Approve Allowance");
         System.out.println("  3 - TransferFrom");
-        System.out.println("  4 - Exit");
+        System.out.println("  4 - Get DepCoin Balance");
+        System.out.println("  5 - Get ISTCoin Balance");
+        System.out.println("  6 - Exit");
         System.out.println("===============================\n");
 
         Scanner scanner = new Scanner(System.in);
@@ -56,7 +62,7 @@ public class Client implements DeliveryListener{
             String input = scanner.nextLine().trim();
             if (input.isEmpty()) continue;
             switch (input) {
-                case "4":
+                case "6":
                     scanner.close();
                     return;
                 case "0":
@@ -179,30 +185,70 @@ public class Client implements DeliveryListener{
                         System.err.println("Error sending transferFrom: " + e.getMessage());
                     }
                     break;
+                case "4":
+                    Address depBalanceAddress = selectAddressFromList(scanner, "Choose address to check DepCoin balance:");
+                    if (depBalanceAddress == null) {
+                        break;
+                    }
+                    sequenceNumber++;
+                    try {
+                        sendGetBalance(depBalanceAddress, "DepCoin", sequenceNumber);
+                    } catch (IOException e) {
+                        System.err.println("Error requesting DepCoin balance: " + e.getMessage());
+                    }
+                    break;
+                case "5":
+                    Address istBalanceAddress = selectAddressFromList(scanner, "Choose address to check ISTCoin balance:");
+                    if (istBalanceAddress == null) {
+                        break;
+                    }
+                    sequenceNumber++;
+                    try {
+                        sendGetBalance(istBalanceAddress, "ISTCoin", sequenceNumber);
+                    } catch (IOException e) {
+                        System.err.println("Error requesting ISTCoin balance: " + e.getMessage());
+                    }
+                    break;
                 default:
-                    System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Approve), 3 (TransferFrom), or 4 (Exit)");
+                    System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Approve), 3 (TransferFrom), 4 (Get DepCoin Balance), 5 (Get ISTCoin Balance), or 6 (Exit)");
             }
         }
     }
 
     private void sendTransaction(Transaction request) throws Exception {
-        pendingDecisions.put((int) request.nonce_count, new ConcurrentHashMap<>());
-        sendMessage(request);
-    }
-
-    private void sendMessage(Transaction request) throws java.io.IOException {
-        String packet = "NewCommand=";
+        pendingDecisions.put((int) request.getNonce(), new ConcurrentHashMap<>());
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
+        String packet = "NewTransaction=";
         try {
             String unsignedJson = GsonUtils.GSON.toJson(request);
             byte[] signature = CryptoLib.sign(unsignedJson.getBytes(), PRIVATE_KEY_PATH);
             request.signature = signature;
             String json = GsonUtils.GSON.toJson(request);
-            System.out.println("Sending JSON: " + json);
             packet += json;
         } catch (Exception e) {
             e.printStackTrace();
         }
+        sendMessage(packet);
+    }
+
+    private void sendGetBalance(Address address, String coin, int seq) throws IOException{
+        pendingDecisions.put((int) seq, new ConcurrentHashMap<>());
+        GetBalance getBalanceRequest = new GetBalance(address, coin, null, -1, seq);
+        String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
+        String packet = "GetBalance=";
+        try {
+            String unsignedJson = GsonUtils.GSON.toJson(getBalanceRequest);
+            byte[] signature = CryptoLib.sign(unsignedJson.getBytes(), PRIVATE_KEY_PATH);
+            getBalanceRequest.setSignature(signature);
+            String json = GsonUtils.GSON.toJson(getBalanceRequest);
+            packet += json;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        sendMessage(packet);
+    }
+
+    private void sendMessage(String packet) throws IOException {
         for (ReplicaInfo replica : config.getAllReplicas()) {
             networkLayerLib.alpSend(packet, replica.getIP(), replica.getPort());
         }
@@ -225,6 +271,13 @@ public class Client implements DeliveryListener{
             String reply = parts[2].split("=")[1];
             System.out.println("Received reply: " + reply);
             registerDecidedReply(Integer.parseInt(seqNum), senderPort, reply);
+        }
+        if (payload.startsWith("GetBalanceResponse=")) {
+            String json = payload.substring("GetBalanceResponse=".length());
+            GetBalance getBalanceReply = GsonUtils.GSON.fromJson(json, GetBalance.class);
+            String reply = Long.toString(getBalanceReply.getBalance());
+            System.out.println("Balance for " + getBalanceReply.getAddress() + " (" + getBalanceReply.getCoin() + "): " + getBalanceReply.getBalance());
+            registerDecidedReply(getBalanceReply.getSequenceNumber(), senderPort, reply);
         }
     }
 
@@ -268,6 +321,39 @@ public class Client implements DeliveryListener{
             }
 
             return config.getAccountAddress(id);
+        }
+    }
+
+    private Address selectAddressFromList(Scanner scanner, String prompt) {
+        List<Address> ownAddresses = new ArrayList<>(config.getAccountAddresses(config.getID()));
+
+        if (ownAddresses.isEmpty()) {
+            System.out.println("No accounts available for client " + config.getID() + ".");
+            return null;
+        }
+
+        System.out.println(prompt);
+        for (int i = 0; i < ownAddresses.size(); i++) {
+            System.out.println("  " + (i + 1) + " - " + ownAddresses.get(i));
+        }
+
+        while (true) {
+            System.out.print("Select option number: ");
+            String input = scanner.nextLine().trim();
+            int option;
+            try {
+                option = Integer.parseInt(input);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid option. Please enter a number.");
+                continue;
+            }
+
+            if (option < 1 || option > ownAddresses.size()) {
+                System.out.println("Invalid option. Valid range is 1 to " + ownAddresses.size() + ".");
+                continue;
+            }
+
+            return ownAddresses.get(option - 1);
         }
     }
 

@@ -6,17 +6,17 @@ import java.util.List;
 
 import com.google.gson.Gson;
 
+import blockchain.Block;
+import blockchain.BlockStore;
 import blockchain.BlockchainMember;
+import blockchain.GetBalance;
 import blockchain.Transaction;
 import config.MemberConfig;
 import consensus.QCManager;
 import crypto.CryptoLib;
 import info.ReplicaInfo;
 import model.CatchUp;
-import model.ClientRequest;
 import model.Message;
-import blockchain.Block;
-import blockchain.BlockStore;
 import model.QC;
 import network.DeliveryListener;
 import network.GsonUtils;
@@ -89,8 +89,67 @@ public class DepChainMember implements DeliveryListener{
                 payload = payload.substring(idx + 1);
             }
         }
-        if (payload.startsWith("NewCommand=")) {
-            String json = payload.substring("NewCommand=".length()).trim();
+        if(payload.startsWith("GetBalance=")){
+            String json = payload.substring("GetBalance=".length()).trim();
+            GetBalance request = GsonUtils.GSON.fromJson(json, GetBalance.class);
+            
+            if (senderPort < 4000){ 
+                System.err.println("GetBalance request received is not from a client, ignoring");
+                return;
+            }
+            
+            if (request.getSignature() == null) { 
+                System.err.println("Invalid signature for GetBalance request in message, ignoring");
+                return;
+            }
+
+            int senderId = senderPort - 4000;
+            String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
+
+            GetBalance unsignedRequest = new GetBalance(request.getAddress(), request.getCoin(), null, -1,request.getSequenceNumber()); // create a GetBalance object without the signature for verification
+            byte[] requestBytes = GsonUtils.GSON.toJson(unsignedRequest).getBytes();
+
+            try {
+                if(!CryptoLib.verifySignature(requestBytes, request.getSignature(), PUBLIC_KEY_PATH)){
+                    System.err.println("Invalid signature for GetBalance request in message, ignoring"); 
+                    return;
+                }
+            } catch (Exception e) {
+                System.err.println("Error verifying signature for GetBalance request: " + e.getMessage());
+                return;
+            }
+            String coin = request.getCoin();
+            if (coin.equals("DepCoin")) {
+                long balance = lastExecutedBlock.state.getAccount(request.getAddress()).getBalance();
+                GetBalance response = new GetBalance(request.getAddress(), coin, null, balance, request.getSequenceNumber());
+                String responseJson = "GetBalanceResponse=" + GsonUtils.GSON.toJson(response);
+                try {
+                    networkLayerLib.alpSend(responseJson, "localhost", senderPort);
+                } catch (IOException e) {
+                    System.err.println("Error sending GetBalance response: " + e.getMessage());
+                }
+            }
+            /*
+            if (coin.equals("ISTCoin")) {
+                long balance = lastExecutedBlock.state.getAccount(request.getAddress()).getStorage();
+                GetBalance response = new GetBalance(request.getAddress(), coin, null, balance, request.getSequenceNumber());
+                String responseJson = "GetBalanceResponse=" + GsonUtils.GSON.toJson(response);
+                try {
+                    networkLayerLib.alpSend(responseJson, "localhost", senderPort);
+                } catch (IOException e) {
+                    System.err.println("Error sending GetBalance response: " + e.getMessage());
+                }
+            }
+            */
+            try {
+                    networkLayerLib.alpSend("GetBalanceResponse=ERROR", "localhost", senderPort);
+                } catch (IOException e) {
+                    System.err.println("Error sending GetBalance response: " + e.getMessage());
+                }
+            return;
+        }
+        if (payload.startsWith("NewTransaction=")) {
+            String json = payload.substring("NewTransaction=".length()).trim();
             Transaction request = GsonUtils.GSON.fromJson(json, Transaction.class);
             
             if (senderPort < 4000){ //FIXME we should send an error message back to the client instead of just ignoring

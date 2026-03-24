@@ -1,12 +1,15 @@
 package blockchain;
 
-import org.junit.jupiter.api.Test;
-
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.hyperledger.besu.datatypes.Address;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 public class GenesisBlockTest {
 
@@ -44,25 +47,31 @@ public class GenesisBlockTest {
         assertEquals(4, genesis.state.accounts.size(), "Genesis state should have 4 accounts");
 
         // Verify admin account exists (used for deploying contracts in genesis)
-        assertTrue(genesis.state.hasAccount(Block.ADMIN_ADDRESS), "Admin account should exist");
-        blockchain.Account adminAccount = genesis.state.getAccount(Block.ADMIN_ADDRESS);
+        Address adminAddress = Address.fromHexString(Block.ADMIN_ADDRESS);
+        assertTrue(genesis.state.hasAccount(adminAddress), "Admin account should exist");
+        blockchain.Account adminAccount = genesis.state.getAccount(adminAddress);
         assertNotNull(adminAccount, "Admin account should not be null");
 
         // Verify ISTCoin contract address exists
-        assertTrue(genesis.state.hasAccount(Block.IST_COIN_ADDRESS),
+        Address istCoinAddress = Address.fromHexString(Block.IST_COIN_ADDRESS);
+        assertTrue(genesis.state.hasAccount(istCoinAddress),
             "ISTCoin contract should exist");
 
         // Verify ISTCoin contract is identified correctly
-        blockchain.Account istAccount = genesis.state.getAccount(Block.IST_COIN_ADDRESS);
+        blockchain.Account istAccount = genesis.state.getAccount(istCoinAddress);
         assertNotNull(istAccount, "ISTCoin account should exist");
         assertTrue(istAccount.isContract(), "ISTCoin should be a contract");
         assertNotNull(istAccount.getCode(), "ISTCoin should have code");
 
         // Verify client accounts have nonce=0 (admin deployed contracts, not clients)
-        String client0Addr = blockchain.AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_0/client_0.pubkey");
-        String client1Addr = blockchain.AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_1/client_1.pubkey");
-        blockchain.Account client0Account = genesis.state.getAccount(client0Addr);
-        blockchain.Account client1Account = genesis.state.getAccount(client1Addr);
+        Address client0Address = Address.fromHexString(
+            blockchain.AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_0/client_0.pubkey")
+        );
+        Address client1Address = Address.fromHexString(
+            blockchain.AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_1/client_1.pubkey")
+        );
+        blockchain.Account client0Account = genesis.state.getAccount(client0Address);
+        blockchain.Account client1Account = genesis.state.getAccount(client1Address);
         assertNotNull(client0Account, "Client0 account should exist");
         assertNotNull(client1Account, "Client1 account should exist");
         assertEquals(0, client0Account.nonce_count, "Client0 should have nonce=0");

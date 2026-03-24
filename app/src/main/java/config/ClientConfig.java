@@ -3,21 +3,24 @@ package config;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.PublicKey;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+
+import org.hyperledger.besu.datatypes.Address;
 
 import blockchain.AddressUtils;
 import blockchain.Block;
-import org.hyperledger.besu.datatypes.Address;
-
 import info.ReplicaInfo;
 
 public class ClientConfig {
     private final int ID;               // This replica's ID
     private final int N;                                    // Total number of replicas
     private final int F;                                    // Byzantine fault tolerance
-    private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>(); 
-    private ConcurrentHashMap<Integer, Address> accountAddresses = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>(); 
+    private final ConcurrentHashMap<Integer, List<Address>> accountAddresses = new ConcurrentHashMap<>();
     private final Address istCoinContractAddress;
 
     public ClientConfig(int N, int thisID, PublicKey publicKey) {
@@ -41,7 +44,19 @@ public class ClientConfig {
     }
 
     public Address getAccountAddress(int replicaId) {
-        return accountAddresses.get(replicaId);
+        List<Address> addresses = accountAddresses.get(replicaId);
+        if (addresses == null || addresses.isEmpty()) {
+            return null;
+        }
+        return addresses.get(0);
+    }
+
+    public List<Address> getAccountAddresses(int replicaId) {
+        List<Address> addresses = accountAddresses.get(replicaId);
+        if (addresses == null) {
+            return Collections.emptyList();
+        }
+        return Collections.unmodifiableList(addresses);
     }
 
     public Address getISTCoinContractAddress() {
@@ -103,7 +118,8 @@ public class ClientConfig {
                 continue;
             }
             String addressHex = AddressUtils.generateAddressFromPublicKey(pubKeyPath);
-            accountAddresses.put(i, Address.fromHexString(addressHex));
+            accountAddresses.computeIfAbsent(i, ignored -> new ArrayList<>())
+                .add(Address.fromHexString(addressHex));
         }
     }
 

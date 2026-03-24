@@ -1,15 +1,5 @@
 package blockchain;
 
-import blockchain.evm.ABIEncoder;
-import blockchain.evm.EVMHelper;
-import crypto.CryptoLib;
-
-import org.apache.tuweni.bytes.Bytes;
-import org.hyperledger.besu.datatypes.Address;
-import org.hyperledger.besu.datatypes.Wei;
-import blockchain.AddressUtils;
-import org.hyperledger.besu.evm.account.MutableAccount;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -21,6 +11,15 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import org.apache.tuweni.bytes.Bytes;
+import org.hyperledger.besu.datatypes.Address;
+import org.hyperledger.besu.datatypes.Wei;
+import org.hyperledger.besu.evm.account.MutableAccount;
+
+import blockchain.evm.ABIEncoder;
+import blockchain.evm.EVMHelper;
+import crypto.CryptoLib;
 
 public class Block {
     public static final String ACCESS_CONTROL_ADDRESS = "0x1234567891234567891234567891234567891234";
@@ -98,7 +97,7 @@ public class Block {
         return leaf;
     }
 
-    public static Block createAndSaveGenesis(String projectRoot) {
+    public static Block createAndSaveGenesis(String projectRoot) { // FIXME: change string to Address
         try {
             // 1. Generate client addresses from public keys
             String client0Addr = AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_0/client_0.pubkey");
@@ -170,12 +169,12 @@ public class Block {
 
                 if (besuAccount.getCode() == null || besuAccount.getCode().isEmpty()) {
                     // EOA
-                    finalState.putAccount(addrStr, new Account(addrStr, balance, nonce));
+                    finalState.putAccount(addr, new Account(balance, nonce));
                 } else {
                     // Contract
                     byte[] code = besuAccount.getCode().toArray();
                     Map<String, String> storage = BlockchainMember.extractStoragePublic(evm, addr);
-                    finalState.putAccount(addrStr, new Account(addrStr, balance, nonce, code, storage));
+                    finalState.putAccount(addr, new Account(balance, nonce, code, storage));
                 }
             }
 
@@ -210,7 +209,7 @@ public class Block {
 
 
     public String toJson() {
-        return network.GsonUtils.GSON.toJson(this);
+        return network.GsonUtils.PRETTY_GSON.toJson(this);
     }
 
     public void saveToFile(String filePath) throws IOException {
@@ -245,12 +244,12 @@ public class Block {
             return;
         }
 
-        List<String> accountAddresses = new ArrayList<>(worldState.accounts.keySet());
+        List<Address> accountAddresses = new ArrayList<>(worldState.accounts.keySet());
         Collections.sort(accountAddresses);
 
-        for (String address : accountAddresses) {
+        for (Address address : accountAddresses) {
             Account account = worldState.accounts.get(address);
-            writeString(baos, address);
+            writeString(baos, address.toHexString());
             writeAccount(baos, account);
         }
     }
@@ -261,7 +260,6 @@ public class Block {
             return;
         }
 
-        writeString(baos, account.address);
         writeLong(baos, account.balance);
         writeLong(baos, account.nonce_count);
         writeBytes(baos, account.code);

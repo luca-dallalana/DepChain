@@ -9,18 +9,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
-import blockchain.Transaction;
-import blockchain.evm.EVMHelper;
+
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.evm.account.MutableAccount;
 
+import blockchain.evm.EVMHelper;
+
 
 public class BlockchainMember {
 
     // Consensus calls this when a block is decided
-    public static Block executeBlock(Block block, BlockStore blockStore, Block lastExecutedBlock){
+    public static Block executeBlock(Block block, BlockStore blockStore, Block lastExecutedBlock) {
         if (block == null) throw new IllegalArgumentException("Cannot execute null block");
         if (blockStore == null) throw new IllegalArgumentException("BlockStore cannot be null");
         if (lastExecutedBlock == null) throw new IllegalArgumentException("Last executed block cannot be null");
@@ -49,7 +50,6 @@ public class BlockchainMember {
             } catch (Exception e) {
                 System.err.println("Failed to persist block #" + b.blockNumber + ": " + e.getMessage());
             }
-
             currentBlock = b;
         }
 
@@ -87,7 +87,7 @@ public class BlockchainMember {
 
     private static boolean statesEqual(WorldState s1, WorldState s2) {
         if (s1.accounts.size() != s2.accounts.size()) return false;
-        for (String addr : s1.accounts.keySet()) {
+        for (Address addr : s1.accounts.keySet()) {
             Account a1 = s1.accounts.get(addr);
             Account a2 = s2.accounts.get(addr);
             if (a2 == null) return false;
@@ -166,10 +166,9 @@ public class BlockchainMember {
     }
 
     private static void initializeEVM(EVMHelper evm, WorldState state) {
-        for (Map.Entry<String, Account> entry : state.accounts.entrySet()) {
-            String addrStr = entry.getKey();
+        for (Map.Entry<Address, Account> entry : state.accounts.entrySet()) {
+            Address addr = entry.getKey();
             Account account = entry.getValue();
-            Address addr = Address.fromHexString(addrStr);
 
             // Create account in EVM with balance
             evm.createAccount(addr, Wei.of(account.balance));
@@ -202,11 +201,10 @@ public class BlockchainMember {
         }
     }
 
-    private static WorldState extractState(EVMHelper evm, Set<String> trackedAddresses) {
+    private static WorldState extractState(EVMHelper evm, Set<Address> trackedAddresses) {
         WorldState finalState = new WorldState();
 
-        for (String addrStr : trackedAddresses) {
-            Address addr = Address.fromHexString(addrStr);
+        for (Address addr : trackedAddresses) {
             MutableAccount besuAccount = (MutableAccount) evm.world.get(addr);
 
             if (besuAccount == null) {
@@ -218,12 +216,12 @@ public class BlockchainMember {
 
             if (besuAccount.getCode() == null || besuAccount.getCode().isEmpty()) {
                 // EOA (Externally Owned Account)
-                finalState.putAccount(addrStr, new Account(addrStr, balance, nonce));
+                finalState.putAccount(addr, new Account(balance, nonce));
             } else {
                 // Contract Account
                 byte[] code = besuAccount.getCode().toArray();
                 Map<String, String> storage = extractStoragePublic(evm, addr);
-                finalState.putAccount(addrStr, new Account(addrStr, balance, nonce, code, storage));
+                finalState.putAccount(addr, new Account(balance, nonce, code, storage));
             }
         }
 
@@ -231,7 +229,7 @@ public class BlockchainMember {
     }
 
     public static WorldState computeState(EVMHelper evm, List<Transaction> transactions, WorldState initialState) {
-        Set<String> trackedAddresses = new HashSet<>();
+        Set<Address> trackedAddresses = new HashSet<>();
 
         // Step 1: Initialize EVM with previous state
         initializeEVM(evm, initialState);
@@ -262,7 +260,7 @@ public class BlockchainMember {
                 if (recipientAccount == null) {
                     evm.createAccount(tx.to, Wei.ZERO);
                     recipientAccount = (MutableAccount) evm.world.get(tx.to);
-                    trackedAddresses.add(tx.to.toHexString());
+                    trackedAddresses.add(tx.to);
                 }
 
                 if (tx.getValue() > 0) {
@@ -280,7 +278,7 @@ public class BlockchainMember {
                 if (gasUsed > tx.getGasLimit()) {
                     senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));
                     senderAccount.incrementNonce();
-                    trackedAddresses.add(tx.from.toHexString());
+                    trackedAddresses.add(tx.from);
                     System.out.println("Transaction failed due to lack of gas");
                     continue;
                 }
@@ -288,7 +286,7 @@ public class BlockchainMember {
                 if (!result.isSuccess()) {
                     senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
                     senderAccount.incrementNonce();
-                    trackedAddresses.add(tx.from.toHexString());
+                    trackedAddresses.add(tx.from);
                     System.out.println("Contract call failed");
                     continue;
                 }
@@ -296,8 +294,8 @@ public class BlockchainMember {
             }
 
             senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
-            trackedAddresses.add(tx.from.toHexString());
-            trackedAddresses.add(tx.to.toHexString());
+            trackedAddresses.add(tx.from);
+            trackedAddresses.add(tx.to);
         }
 
         // Step 3: Extract final state from EVM

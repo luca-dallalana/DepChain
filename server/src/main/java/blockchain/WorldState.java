@@ -3,10 +3,12 @@ package blockchain;
 import java.util.HashMap;
 import java.util.Map;
 
-public class WorldState {
-    public Map<String, Account> accounts;  // Address -> Account
+import org.hyperledger.besu.datatypes.Address;
 
-    public WorldState(Map<String, Account> accounts) {
+public class WorldState {
+    public Map<Address, Account> accounts;  // Address -> Account
+
+    public WorldState(Map<Address, Account> accounts) {
         this.accounts = accounts != null ? accounts : new HashMap<>();
     }
 
@@ -15,15 +17,15 @@ public class WorldState {
     }
 
     // Helper methods
-    public Account getAccount(String address) {
+    public Account getAccount(Address address) {
         return accounts.get(address);
     }
 
-    public void putAccount(String address, Account account) {
+    public void putAccount(Address address, Account account) {
         accounts.put(address, account);
     }
 
-    public boolean hasAccount(String address) {
+    public boolean hasAccount(Address address) {
         return accounts.containsKey(address);
     }
 }

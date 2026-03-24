@@ -1,16 +1,19 @@
 package blockchain;
 
-import blockchain.evm.ABIEncoder;
-import blockchain.evm.EVMHelper;
-import org.apache.tuweni.bytes.Bytes;
-import org.hyperledger.besu.datatypes.Address;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.apache.tuweni.bytes.Bytes;
+import org.hyperledger.besu.datatypes.Address;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import blockchain.evm.ABIEncoder;
+import blockchain.evm.EVMHelper;
 
 public class TransactionExecutionTest {
 
@@ -39,9 +42,9 @@ public class TransactionExecutionTest {
 
         System.out.println("\n=== Test Setup Complete ===");
         System.out.println("Client0: " + client0.toHexString());
-        System.out.println("Client0 initial balance: " + genesisState.getAccount(client0.toHexString()).balance + " DepCoin");
+        System.out.println("Client0 initial balance: " + genesisState.getAccount(client0).balance + " DepCoin");
         System.out.println("Client1: " + client1.toHexString());
-        System.out.println("Client1 initial balance: " + genesisState.getAccount(client1.toHexString()).balance + " DepCoin\n");
+        System.out.println("Client1 initial balance: " + genesisState.getAccount(client1).balance + " DepCoin\n");
     }
 
     @Test
@@ -73,11 +76,11 @@ public class TransactionExecutionTest {
         WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
 
         // Verify balances
-        Account client0Final = finalState.getAccount(client0.toHexString());
-        Account client1Final = finalState.getAccount(client1.toHexString());
+        Account client0Final = finalState.getAccount(client0);
+        Account client1Final = finalState.getAccount(client1);
 
-        long client0InitialBalance = genesisState.getAccount(client0.toHexString()).balance;
-        long client1InitialBalance = genesisState.getAccount(client1.toHexString()).balance;
+        long client0InitialBalance = genesisState.getAccount(client0).balance;
+        long client1InitialBalance = genesisState.getAccount(client1).balance;
 
         long gasFee = gasPrice * 21000;  // Native transfer uses 21,000 gas
 
@@ -102,7 +105,7 @@ public class TransactionExecutionTest {
         List<Transaction> transactions = new ArrayList<>();
 
         // Verify new account doesn't exist initially
-        assertFalse(genesisState.hasAccount(newAccount.toHexString()),
+        assertFalse(genesisState.hasAccount(newAccount),
             "New account should not exist in genesis");
 
         // Client0 sends DepCoin to non-existent account
@@ -123,10 +126,10 @@ public class TransactionExecutionTest {
         WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
 
         // Verify new account was created
-        assertTrue(finalState.hasAccount(newAccount.toHexString()),
+        assertTrue(finalState.hasAccount(newAccount),
             "New account should be created automatically");
 
-        Account newAcct = finalState.getAccount(newAccount.toHexString());
+        Account newAcct = finalState.getAccount(newAccount);
         assertEquals(5000, newAcct.balance, "New account should have received 5000 DepCoin");
         assertEquals(0, newAcct.nonce_count, "New account should have nonce 0");
         assertFalse(newAcct.isContract(), "New account should be EOA, not contract");
@@ -175,7 +178,7 @@ public class TransactionExecutionTest {
         EVMHelper evm = new EVMHelper();
         List<Transaction> transactions = new ArrayList<>();
 
-        long client0Balance = genesisState.getAccount(client0.toHexString()).balance;
+        long client0Balance = genesisState.getAccount(client0).balance;
 
         // Try to send more than available (including gas)
         Transaction tx = new Transaction(
@@ -229,13 +232,13 @@ public class TransactionExecutionTest {
         );
         transactions.add(tx);
 
-        long client0InitialBalance = genesisState.getAccount(client0.toHexString()).balance;
+        long client0InitialBalance = genesisState.getAccount(client0).balance;
 
         // Execute transaction
         WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
 
         // Verify gas was deducted
-        Account client0Final = finalState.getAccount(client0.toHexString());
+        Account client0Final = finalState.getAccount(client0);
         long gasFee = 1 * 100000;  // gasPrice=1, gasUsed=100,000 (estimated for contract calls)
 
         assertEquals(client0InitialBalance - gasFee, client0Final.balance,
@@ -272,15 +275,15 @@ public class TransactionExecutionTest {
             transactions.add(tx);
         }
 
-        long client0InitialBalance = genesisState.getAccount(client0.toHexString()).balance;
-        long client1InitialBalance = genesisState.getAccount(client1.toHexString()).balance;
+        long client0InitialBalance = genesisState.getAccount(client0).balance;
+        long client1InitialBalance = genesisState.getAccount(client1).balance;
 
         // Execute all transactions
         WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
 
         // Verify results
-        Account client0Final = finalState.getAccount(client0.toHexString());
-        Account client1Final = finalState.getAccount(client1.toHexString());
+        Account client0Final = finalState.getAccount(client0);
+        Account client1Final = finalState.getAccount(client1);
 
         long totalTransferred = 300;  // 100 * 3
         long totalGasFees = 21000 * 3 * 1;  // 21000 gas * 3 txs * 1 gasPrice
