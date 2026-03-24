@@ -18,6 +18,7 @@ import model.QC;
 public class QCManager {
     private final MemberConfig memberConfig;
     private final ThresholdSignatureService signatureService;
+    private String genesisBlockHash;
 
     // Vote storage: key = "type:viewNumber", value = list of votes
     private final ConcurrentHashMap<String, List<Message>> voteStore;
@@ -29,6 +30,10 @@ public class QCManager {
             memberConfig.getAllPublicKeys()
         );
         this.voteStore = new ConcurrentHashMap<>();
+    }
+
+    public void setGenesisBlockHash(String genesisBlockHash) {
+        this.genesisBlockHash = genesisBlockHash;
     }
 
     public boolean addVote(Message vote) {
@@ -96,12 +101,10 @@ public class QCManager {
     public boolean verifyQC(QC qc) {
         try {
 
-            /* FIXME missing the genesis qc special case
-            if (qc.node.height == 0 && qc.viewNumber == 0) {
-                System.out.println("Gennesis QC accepted");
+           if (isGenesisQC(qc)) {
                 return true;
             }
-            */
+
             if (qc.signers.size() < memberConfig.getQuorumSize()) {
                 System.out.println("QC verification failed: insufficient signers");
                 return false;
@@ -117,6 +120,17 @@ public class QCManager {
             e.printStackTrace();
             return false;
         }
+    }
+
+    private boolean isGenesisQC(QC qc) {
+        if (qc == null) return false;
+        if (!qc.type.equals("prepare")) return false;
+        if (qc.viewNumber != 0) return false;
+        if (qc.blockHash == null || qc.blockHash.isBlank()) return false;
+        if (!genesisBlockHash.equals(qc.blockHash)) return false;
+        boolean noSig = qc.sig == null || qc.sig.length == 0;
+        boolean noSigners = qc.signers == null || qc.signers.isEmpty();
+        return noSig && noSigners;
     }
 
     public byte[] createPartialSignature(String type, int viewNumber, String blockHash) throws Exception {

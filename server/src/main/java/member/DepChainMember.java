@@ -266,6 +266,7 @@ public class DepChainMember implements DeliveryListener{
 
         try {
             Block genesis = Block.createAndSaveGenesis("..");
+            qcManager.setGenesisBlockHash(genesis.blockHash);
             this.blockStore = new BlockStore(genesis);
             this.lastExecutedBlock = genesis;
             prepareQC = new QC("prepare", 0, genesis.blockHash, null);
