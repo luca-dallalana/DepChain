@@ -67,7 +67,7 @@ public class Client implements DeliveryListener{
                     return;
                 case "0":
                     // Native DepCoin transfer
-                    Address toAddress = readClientId(scanner, "Enter recipient: ");
+                    Address toAddress = readAddressForClient(scanner, "Enter recipient client ID: ");
                     Long transferValue = readLong(scanner, "Enter value: ");
                     Long gasLimit = readLong(scanner, "Enter gasLimit: ");
                     Long gasPrice = readLong(scanner, "Enter gasPrice: ");
@@ -95,7 +95,7 @@ public class Client implements DeliveryListener{
                     break;
                 case "1": 
                     // ISTCoin transfer through contract
-                    Address recipientAddress = readClientId(scanner, "Enter recipient: ");
+                    Address recipientAddress = readAddressForClient(scanner, "Enter recipient client ID: ");
                     Long istValue = readLong(scanner, "Enter value: ");
                     Long istGasLimit = readLong(scanner, "Enter gasLimit: ");
                     Long istGasPrice = readLong(scanner, "Enter gasPrice: ");
@@ -124,7 +124,7 @@ public class Client implements DeliveryListener{
                     break;
                 case "2":
                     // Approve allowance on ISTCoin contract
-                    Address spenderAddress = readClientId(scanner, "Enter spender: ");
+                    Address spenderAddress = readAddressForClient(scanner, "Enter spender client ID: ");
                     Long newAllowance = readLong(scanner, "Enter new allowance value: ");
                     Long expectedAllowance = readLong(scanner, "Enter expected current allowance: ");
                     Long approveGasLimit = readLong(scanner, "Enter gasLimit: ");
@@ -158,8 +158,8 @@ public class Client implements DeliveryListener{
                     break;
                 case "3":
                     // TransferFrom
-                    Address fromAddr = readClientId(scanner, "Enter account owner: ");
-                    Address toTfAddress = readClientId(scanner, "Enter recipient: ");
+                    Address fromAddr = readAddressForClient(scanner, "Enter account owner client ID: ");
+                    Address toTfAddress = readAddressForClient(scanner, "Enter recipient client ID: ");
                     Long transferFromValue = readLong(scanner, "Enter value: ");
                     Long gasLimitTF = readLong(scanner, "Enter gasLimit: ");
                     Long gasPriceTF = readLong(scanner, "Enter gasPrice: ");
@@ -298,7 +298,7 @@ public class Client implements DeliveryListener{
         }
     }
 
-    private Address readClientId(Scanner scanner, String prompt) {
+    private Address readAddressForClient(Scanner scanner, String prompt) {
         while (true) {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
@@ -315,12 +315,35 @@ public class Client implements DeliveryListener{
                 continue;
             }
 
-            if (config.getAccountAddress(id) == null) {
+            List<Address> clientAddresses = config.getAccountAddresses(id);
+            if (clientAddresses.isEmpty()) {
                 System.out.println("No address configured for client " + id + ".");
                 continue;
             }
 
-            return config.getAccountAddress(id);
+            System.out.println("Available addresses for client " + id + ":");
+            for (int i = 0; i < clientAddresses.size(); i++) {
+                System.out.println("  " + (i + 1) + " - " + clientAddresses.get(i));
+            }
+
+            while (true) {
+                System.out.print("Select option number: ");
+                String optionInput = scanner.nextLine().trim();
+                int option;
+                try {
+                    option = Integer.parseInt(optionInput);
+                } catch (NumberFormatException e) {
+                    System.out.println("Invalid option. Please enter a number.");
+                    continue;
+                }
+
+                if (option < 1 || option > clientAddresses.size()) {
+                    System.out.println("Invalid option. Valid range is 1 to " + clientAddresses.size() + ".");
+                    continue;
+                }
+
+                return clientAddresses.get(option - 1);
+            }
         }
     }
 
