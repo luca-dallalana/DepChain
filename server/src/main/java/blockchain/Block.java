@@ -118,29 +118,11 @@ public class Block {
             evm.createAccount(client1HexAddress, Wei.of(100000));
 
             // 3. Load contract bytecode
-            String accessControlBytecode = BytecodeLoader.loadBytecode("AccessControl");
             String istCoinBytecode = BytecodeLoader.loadBytecode("ISTCoin");
 
-            // 4. Deploy contracts manually (genesis-only setup, admin deploys)
-            Address acAddress = Address.fromHexString(ACCESS_CONTROL_ADDRESS);
-            Bytes acConstructorParams = ABIEncoder.encodeAccessControlConstructor(
-                new Address[]{client0HexAddress, client1HexAddress}
-            );
-            Bytes acDeploymentCode = Bytes.concatenate(
-                Bytes.fromHexString(accessControlBytecode),
-                acConstructorParams
-            );
-            boolean acDeployed = evm.deployContract(
-                adminAddress,
-                acAddress,
-                acDeploymentCode
-            );
-            if (!acDeployed) {
-                throw new RuntimeException("Failed to deploy AccessControl contract");
-            }
-
+            // 4. Deploy ISTCoin contract manually (genesis-only setup, admin deploys)
             Address istAddress = Address.fromHexString(IST_COIN_ADDRESS);
-            Bytes istConstructorParams = ABIEncoder.encodeISTCoinConstructor(acAddress, adminAddress);
+            Bytes istConstructorParams = ABIEncoder.encodeISTCoinConstructor(adminAddress);
             Bytes istDeploymentCode = Bytes.concatenate(
                 Bytes.fromHexString(istCoinBytecode),
                 istConstructorParams
@@ -154,19 +136,8 @@ public class Block {
                 throw new RuntimeException("Failed to deploy ISTCoin contract");
             }
 
-            // 5. Create deployment transactions (for record-keeping in genesis block)
+            // 5. Create deployment transaction (for record-keeping in genesis block)
             List<Transaction> transactions = new ArrayList<>();
-            transactions.add(new Transaction(
-                -1,
-                adminAddress,
-                null,  // Contract deployment
-                0,     // No value transfer
-                acDeploymentCode.toArray(),
-                10000000,  // Gas limit
-                0,         // Gas price (free for genesis)
-                0,         // Nonce
-                null       // No signature (trusted genesis)
-            ));
             transactions.add(new Transaction(
                 -1,
                 adminAddress,
@@ -175,7 +146,7 @@ public class Block {
                 istDeploymentCode.toArray(),
                 10000000,  // Gas limit
                 0,         // Gas price (free for genesis)
-                1,         // Nonce
+                0,         // Nonce
                 null       // No signature (trusted genesis)
             ));
 
@@ -185,7 +156,6 @@ public class Block {
                 ADMIN_ADDRESS,
                 client0Addr,
                 client1Addr,
-                ACCESS_CONTROL_ADDRESS,
                 IST_COIN_ADDRESS
             );
 
@@ -209,7 +179,6 @@ public class Block {
                 }
             }
 
-            System.out.println("AccessControl deployed at: " + ACCESS_CONTROL_ADDRESS);
             System.out.println("ISTCoin deployed at: " + IST_COIN_ADDRESS);
             System.out.println("Genesis state contains " + finalState.accounts.size() + " accounts");
 

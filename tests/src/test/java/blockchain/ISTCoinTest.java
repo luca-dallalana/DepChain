@@ -12,7 +12,6 @@ import java.math.BigInteger;
 public class ISTCoinTest {
 
     // Bytecode loaded from compiled .bin files at runtime
-    private static final String ACCESS_CONTROL_BYTECODE = BytecodeLoader.loadBytecode("AccessControl");
     private static final String IST_COIN_BYTECODE = BytecodeLoader.loadBytecode("ISTCoin");
 
     // Test addresses
@@ -20,7 +19,6 @@ public class ISTCoinTest {
     private static final Address ALICE = Address.fromHexString("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     private static final Address BOB = Address.fromHexString("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     private static final Address CHARLIE = Address.fromHexString("0xcccccccccccccccccccccccccccccccccccccccc");
-    private static final Address ACCESS_CONTROL_ADDRESS = Address.fromHexString("0x1234567891234567891234567891234567891234");
     private static final Address IST_COIN_ADDRESS = Address.fromHexString("0x5555555555555555555555555555555555555555");
 
     // Expected values
@@ -33,25 +31,14 @@ public class ISTCoinTest {
         EVMHelper evm = new EVMHelper();
 
         System.out.println("--- Setup Phase ---");
-        // FIXME: Change later to use DepCoin 
-        evm.createAccount(DEPLOYER, Wei.fromEth(1000)); 
+        evm.createAccount(DEPLOYER, Wei.fromEth(1000));
         evm.createAccount(ALICE, Wei.fromEth(1000));
         evm.createAccount(BOB, Wei.fromEth(1000));
         evm.createAccount(CHARLIE, Wei.fromEth(1000));
         System.out.println("Accounts created: DEPLOYER, ALICE, BOB, CHARLIE");
 
-        // Deploy AccessControl with Alice and Bob as initially allowed
-        Address[] initialAllowed = new Address[]{ALICE, BOB};
-        Bytes accessControlConstructorParams = ABIEncoder.encodeAccessControlConstructor(initialAllowed);
-        Bytes accessControlDeploymentCode = Bytes.concatenate(
-            Bytes.fromHexString(ACCESS_CONTROL_BYTECODE),
-            accessControlConstructorParams
-        );
-        boolean accessControlDeployed = evm.deployContract(DEPLOYER, ACCESS_CONTROL_ADDRESS, accessControlDeploymentCode);
-        System.out.println("AccessControl deployed: " + accessControlDeployed);
-
         // Deploy ISTCoin with Alice as initial holder
-        Bytes istCoinConstructorParams = ABIEncoder.encodeISTCoinConstructor(ACCESS_CONTROL_ADDRESS, ALICE);
+        Bytes istCoinConstructorParams = ABIEncoder.encodeISTCoinConstructor(ALICE);
         Bytes istCoinDeploymentCode = Bytes.concatenate(
             Bytes.fromHexString(IST_COIN_BYTECODE),
             istCoinConstructorParams
@@ -95,24 +82,8 @@ public class ISTCoinTest {
         System.out.println("Match: " + bobBalance.equals(BigInteger.valueOf(1000)));
         System.out.println();
 
-        // ========== Test 3: Transfer Blocked (Non-Allowed Account) ==========
-        System.out.println("--- Test 3: Transfer Blocked (Non-Allowed Account) ---");
-
-        // First verify Charlie is NOT allowed
-        callData = ABIEncoder.encodeCanTransfer(CHARLIE);
-        evm.executeCall(DEPLOYER, ACCESS_CONTROL_ADDRESS, callData);
-        boolean charlieCanTransfer = evm.extractBoolFromReturnData();
-        System.out.println("Charlie canTransfer check: " + charlieCanTransfer + " (should be false)");
-
-        callData = ABIEncoder.encodeTransfer(ALICE, BigInteger.valueOf(100));
-        result = evm.executeCall(CHARLIE, IST_COIN_ADDRESS, callData);
-        System.out.println("Transfer from Charlie (not allowed): " + result.isSuccess());
-        System.out.println("Expected to fail: " + !result.isSuccess());
-        evm.printLastTraceLines(5, "Test 3 - transfer blocked (REVERT)");
-        System.out.println();
-
-        // ========== Test 4: Standard TransferFrom Flow ==========
-        System.out.println("--- Test 4: Standard TransferFrom Flow ---");
+        // ========== Test 3: Standard TransferFrom Flow ==========
+        System.out.println("--- Test 3: Standard TransferFrom Flow ---");
 
         // Alice approves Bob for 500 tokens
         callData = ABIEncoder.encodeApprove(BOB, BigInteger.valueOf(500), BigInteger.ZERO);
@@ -123,7 +94,7 @@ public class ISTCoinTest {
         callData = ABIEncoder.encodeTransferFrom(ALICE, BOB, BigInteger.valueOf(300));
         result = evm.executeCall(BOB, IST_COIN_ADDRESS, callData);
         System.out.println("Bob transferFrom Alice to Bob (300): " + result.isSuccess());
-        evm.printLastTraceLines(5, "Test 4 - transferFrom (RETURN)");
+        evm.printLastTraceLines(5, "Test 3 - transferFrom (RETURN)");
 
         // Check remaining allowance (should be 200)
         callData = ABIEncoder.encodeAllowance(ALICE, BOB);
@@ -134,8 +105,8 @@ public class ISTCoinTest {
         System.out.println("Match: " + allowance.equals(BigInteger.valueOf(200)));
         System.out.println();
 
-        // ========== Test 5: Frontrunning Attack Prevention (CRITICAL) ==========
-        System.out.println("--- Test 5: Frontrunning Attack Prevention (CRITICAL) ---");
+        // ========== Test 4: Frontrunning Attack Prevention (CRITICAL) ==========
+        System.out.println("--- Test 4: Frontrunning Attack Prevention (CRITICAL) ---");
 
         // IMPORTANT: Reset allowance from Test 4 (was 200) before starting frontrunning test
         System.out.println("Step 0: Reset allowance from 200 to 0");
@@ -167,7 +138,7 @@ public class ISTCoinTest {
         result = evm.executeCall(ALICE, IST_COIN_ADDRESS, callData);
         System.out.println("  approve(Bob, 50, 100): " + result.isSuccess());
         System.out.println("  MUST REVERT: " + !result.isSuccess());
-        evm.printLastTraceLines(10, "Test 5 Step 3 - approve with wrong expectation (REVERT)");
+        evm.printLastTraceLines(10, "Test 4 Step 3 - approve with wrong expectation (REVERT)");
 
         if (result.isSuccess()) {
             System.out.println("  ❌ FRONTRUNNING PROTECTION FAILED - Transaction should have reverted!");
@@ -181,7 +152,7 @@ public class ISTCoinTest {
         result = evm.executeCall(ALICE, IST_COIN_ADDRESS, callData);
         System.out.println("  approve(Bob, 50, 0): " + result.isSuccess());
         System.out.println("  MUST SUCCEED: " + result.isSuccess());
-        evm.printLastTraceLines(10, "Test 5 Step 4 - approve with correct expectation (RETURN)");
+        evm.printLastTraceLines(10, "Test 4 Step 4 - approve with correct expectation (RETURN)");
 
         // Step 5: Verify final allowance is 50
         callData = ABIEncoder.encodeAllowance(ALICE, BOB);
@@ -193,14 +164,14 @@ public class ISTCoinTest {
         System.out.println("✓ Frontrunning attack prevented!");
         System.out.println();
 
-        // ========== Test 6: Approve with Correct Expected Value ==========
-        System.out.println("--- Test 6: Approve with Correct Expected Value ---");
+        // ========== Test 5: Approve with Correct Expected Value ==========
+        System.out.println("--- Test 5: Approve with Correct Expected Value ---");
 
         // Current allowance is 50, set to 75
         callData = ABIEncoder.encodeApprove(BOB, BigInteger.valueOf(75), BigInteger.valueOf(50));
         result = evm.executeCall(ALICE, IST_COIN_ADDRESS, callData);
         System.out.println("Approve with correct expected value: " + result.isSuccess());
-        evm.printLastTraceLines(5, "Test 6 - approve (RETURN)");
+        evm.printLastTraceLines(5, "Test 5 - approve (RETURN)");
 
         callData = ABIEncoder.encodeAllowance(ALICE, BOB);
         evm.executeCall(DEPLOYER, IST_COIN_ADDRESS, callData);
@@ -210,8 +181,8 @@ public class ISTCoinTest {
         System.out.println("Match: " + newAllowance.equals(BigInteger.valueOf(75)));
         System.out.println();
 
-        // ========== Test 7: Allowance Queries ==========
-        System.out.println("--- Test 7: Allowance Queries ---");
+        // ========== Test 6: Allowance Queries ==========
+        System.out.println("--- Test 6: Allowance Queries ---");
 
         callData = ABIEncoder.encodeAllowance(ALICE, BOB);
         evm.executeCall(DEPLOYER, IST_COIN_ADDRESS, callData);
@@ -222,18 +193,7 @@ public class ISTCoinTest {
         evm.executeCall(DEPLOYER, IST_COIN_ADDRESS, callData);
         BigInteger aliceToCharlie = evm.extractUint256FromReturnData();
         System.out.println("Alice -> Charlie allowance: " + aliceToCharlie);
-
-        // Check access control
-        callData = ABIEncoder.encodeCanTransfer(ALICE);
-        evm.executeCall(DEPLOYER, ACCESS_CONTROL_ADDRESS, callData);
-        boolean aliceAllowed = evm.extractBoolFromReturnData();
-        System.out.println("Alice allowed to transfer: " + aliceAllowed);
-
-        callData = ABIEncoder.encodeCanTransfer(CHARLIE);
-        evm.executeCall(DEPLOYER, ACCESS_CONTROL_ADDRESS, callData);
-        boolean charlieAllowed = evm.extractBoolFromReturnData();
-        System.out.println("Charlie allowed to transfer: " + charlieAllowed);
-        evm.printLastTraceLines(5, "Test 7 - canTransfer (RETURN)");
+        evm.printLastTraceLines(5, "Test 6 - allowance (RETURN)");
         System.out.println();
 
         System.out.println("=== All Tests Completed ===");

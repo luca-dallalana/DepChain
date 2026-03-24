@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-interface IAccessControl {
-    function canTransfer(address account) external view returns (bool);
-}
-
 contract ISTCoin {
     string public constant name = "IST Coin";
     string public constant symbol = "IST";
     uint8 public constant decimals = 2;
     uint256 public constant totalSupply = 10_000_000_000; // 100M * 100 (decimals=2)
-
-    IAccessControl public accessControl;
 
     mapping(address => uint256) private balances;
     mapping(address => mapping(address => uint256)) private allowances;
@@ -19,8 +13,7 @@ contract ISTCoin {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
-    constructor(address accessControlAddress, address initialHolder) {
-        accessControl = IAccessControl(accessControlAddress);
+    constructor(address initialHolder) {
         balances[initialHolder] = totalSupply;
         emit Transfer(address(0), initialHolder, totalSupply);
     }
@@ -34,7 +27,6 @@ contract ISTCoin {
     }
 
     function transfer(address to, uint256 amount) external returns (bool) {
-        require(accessControl.canTransfer(msg.sender), "Transfer not allowed");
         require(balances[msg.sender] >= amount, "Insufficient balance");
 
         balances[msg.sender] -= amount;
@@ -45,7 +37,6 @@ contract ISTCoin {
     }
 
     function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        require(accessControl.canTransfer(msg.sender), "Transfer not allowed");
         require(balances[from] >= amount, "Insufficient balance");
         require(allowances[from][msg.sender] >= amount, "Insufficient allowance");
 

@@ -25,20 +25,10 @@ public class ABIEncoder {
         return Bytes.fromHexString(FunctionEncoder.encode(function).substring(2));
     }
 
-    public static Bytes encodeAccessControlConstructor(Address[] initialAllowed) {
-        List<org.web3j.abi.datatypes.Address> addressList = Arrays.stream(initialAllowed)
-            .map(ABIEncoder::toWeb3jAddress)
-            .collect(Collectors.toList());
 
+    public static Bytes encodeISTCoinConstructor(Address initialHolder) {
         String encoded = FunctionEncoder.encodeConstructor(
-            Arrays.asList(new DynamicArray<>(org.web3j.abi.datatypes.Address.class, addressList))
-        );
-        return Bytes.fromHexString(encoded);
-    }
-
-    public static Bytes encodeISTCoinConstructor(Address accessControlAddress, Address initialHolder) {
-        String encoded = FunctionEncoder.encodeConstructor(
-            Arrays.asList(toWeb3jAddress(accessControlAddress), toWeb3jAddress(initialHolder))
+            Arrays.asList(toWeb3jAddress(initialHolder))
         );
         return Bytes.fromHexString(encoded);
     }
@@ -74,9 +64,6 @@ public class ABIEncoder {
         ));
     }
 
-    public static Bytes encodeCanTransfer(Address account) {
-        return encodeFunctionCall("canTransfer", Arrays.asList(toWeb3jAddress(account)));
-    }
 
     public static Bytes encodeTotalSupply() {
         return encodeFunctionCall("totalSupply", Collections.emptyList());

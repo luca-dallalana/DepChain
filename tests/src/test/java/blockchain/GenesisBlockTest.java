@@ -38,28 +38,21 @@ public class GenesisBlockTest {
         assertTrue(genesis.isGenesisBlock(), "Should be identified as genesis block");
 
         // Verify transactions
-        assertEquals(2, genesis.transactions.size(), "Genesis should have 2 deployment transactions");
+        assertEquals(1, genesis.transactions.size(), "Genesis should have 1 deployment transaction");
 
-        // Verify state (admin + 2 clients + 2 contracts)
-        assertEquals(5, genesis.state.accounts.size(), "Genesis state should have 5 accounts");
+        // Verify state (admin + 2 clients + 1 contract)
+        assertEquals(4, genesis.state.accounts.size(), "Genesis state should have 4 accounts");
 
         // Verify admin account exists (used for deploying contracts in genesis)
         assertTrue(genesis.state.hasAccount(Block.ADMIN_ADDRESS), "Admin account should exist");
         blockchain.Account adminAccount = genesis.state.getAccount(Block.ADMIN_ADDRESS);
         assertNotNull(adminAccount, "Admin account should not be null");
 
-        // Verify contract addresses exist
-        assertTrue(genesis.state.hasAccount(Block.ACCESS_CONTROL_ADDRESS),
-            "AccessControl contract should exist");
+        // Verify ISTCoin contract address exists
         assertTrue(genesis.state.hasAccount(Block.IST_COIN_ADDRESS),
             "ISTCoin contract should exist");
 
-        // Verify contracts are identified correctly
-        blockchain.Account acAccount = genesis.state.getAccount(Block.ACCESS_CONTROL_ADDRESS);
-        assertNotNull(acAccount, "AccessControl account should exist");
-        assertTrue(acAccount.isContract(), "AccessControl should be a contract");
-        assertNotNull(acAccount.getCode(), "AccessControl should have code");
-
+        // Verify ISTCoin contract is identified correctly
         blockchain.Account istAccount = genesis.state.getAccount(Block.IST_COIN_ADDRESS);
         assertNotNull(istAccount, "ISTCoin account should exist");
         assertTrue(istAccount.isContract(), "ISTCoin should be a contract");

@@ -109,7 +109,6 @@
                                 <argument>cancun</argument>
                                 <argument>-o</argument>
                                 <argument>bytecode/</argument>
-                                <argument>AccessControl.sol</argument>
                                 <argument>ISTCoin.sol</argument>
                             </arguments>
                         </configuration>
