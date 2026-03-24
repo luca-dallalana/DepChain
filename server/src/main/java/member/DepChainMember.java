@@ -38,6 +38,7 @@ public class DepChainMember implements DeliveryListener{
     private final DepChainUtil util;
     private Block currentProposal; // Track leader's proposal
     private int lastExecutedHeight; // Track last executed command height
+    private Block lastExecutedBlock; // Track last executed block
     private int timeoutCount = 1; // Track number of timeouts for exponential backoff
 
     private static final long PHASE_TIMEOUT_MS = 200;
@@ -203,11 +204,20 @@ public class DepChainMember implements DeliveryListener{
     
     public void start() {
         System.out.println("SERVER STARTED: ID=" + memberConfig.getID());
+
+        try {
+            Block genesis = Block.createAndSaveGenesis("..");
+            this.blockStore = new BlockStore(genesis);
+            this.lastExecutedBlock = genesis;
+            prepareQC = new QC("prepare", 0, genesis.blockHash, null);
+            System.out.println("Genesis block initialized: " + genesis.blockHash);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create genesis block", e);
+        }
+
         this.receiver = new UdpReceiver(socket, networkLayerLib);
         new Thread(receiver).start();
-        startTimeout(); // restart for new-view phase
-        prepareQC = new QC("prepare", 0, blockStore.getFirstBlock().blockHash, null); // Initialize prepareQC to genesis QC
-        this.blockStore = new BlockStore(null); //FIXME we should initialize the actual genesis block
+        startTimeout();
     }
 
     private void sendMessage(Message m, String destIp, int destPort) throws java.io.IOException {
@@ -307,6 +317,13 @@ public class DepChainMember implements DeliveryListener{
                 System.out.println("Received higher view prepare message, updating view to " + m.viewNumber);
                 sendCatchUpRequest(m.justify.blockHash);
                 curView = m.viewNumber; // Update to higher view
+            }
+
+            Block parentBlock = blockStore.getBlockByHash(m.justify.blockHash);
+            if (!BlockchainMember.isValidBlock(m.block, parentBlock)) {
+                System.err.println("Block failed state validation in prepare message");
+                proposeNewView();
+                return;
             }
 
             if (blockStore.extendsFrom(m.block, m.justify.blockHash) && safeBlock(m.block, m.justify)) {
@@ -450,7 +467,7 @@ public class DepChainMember implements DeliveryListener{
 
             broadcast(decideMsg);
             Block block = blockStore.getBlockByHash(commitQC.blockHash);
-            BlockchainMember.executeBlock(block);
+            this.lastExecutedBlock = BlockchainMember.executeBlock(block, blockStore, lastExecutedBlock);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -484,7 +501,7 @@ public class DepChainMember implements DeliveryListener{
 
         startTimeout();
         Block block = blockStore.getBlockByHash(m.justify.blockHash);
-        BlockchainMember.executeBlock(block);
+        this.lastExecutedBlock = BlockchainMember.executeBlock(block, blockStore, lastExecutedBlock);
     }
 
     private QC getMaxQC() { //maybe put this in utils
@@ -629,20 +646,26 @@ public class DepChainMember implements DeliveryListener{
 
     private void handleCatchUpResponse(CatchUp msg){
         List<Block> blockList = msg.blockList;
-        for (int i = blockList.size() - 1; i >= 0; i--) { // Execute from lowest height to highest
-            Block b = blockList.get(i);
+        for (Block b : blockList) {
             try {
                 if (blockStore.getBlockByHash(b.depHash()) == null) {
                     System.out.println("Storing catch-up block at height " + b.blockNumber + ": " + b.blockHash);
                     blockStore.storeBlock(b);
-                } else {
-                    System.out.println("Block already exists in store, skipping store for block at height " + b.blockNumber + ": " + b.blockHash);
                 }
             } catch (Exception e) {
                 System.out.println("Error storing catch-up block: " + e.getMessage());
             }
         }
-        System.out.println("Updated block store with catch-up blocks, now at height " + blockList.get(0).blockNumber);
+
+        if (!blockList.isEmpty()) {
+            Block latestBlock = blockList.get(0);
+            this.lastExecutedBlock = BlockchainMember.executeBlock(latestBlock, blockStore, lastExecutedBlock);
+            System.out.println("Caught up to block height " + lastExecutedBlock.blockNumber);
+        }
+    }
+
+    public Block getLastExecutedBlock() {
+        return lastExecutedBlock;
     }
 
 }

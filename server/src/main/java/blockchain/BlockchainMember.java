@@ -1,6 +1,7 @@
 package blockchain;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -19,7 +20,41 @@ import org.hyperledger.besu.evm.account.MutableAccount;
 public class BlockchainMember {
 
     // Consensus calls this when a block is decided
-    public static void executeBlock(Block block){}
+    public static Block executeBlock(Block block, BlockStore blockStore, Block lastExecutedBlock){
+        if (block == null) throw new IllegalArgumentException("Cannot execute null block");
+        if (blockStore == null) throw new IllegalArgumentException("BlockStore cannot be null");
+        if (lastExecutedBlock == null) throw new IllegalArgumentException("Last executed block cannot be null");
+
+        List<Block> blocksToExecute = blockStore.getBlocksUntil(block.blockHash, lastExecutedBlock.blockHash);
+
+        if (blocksToExecute.isEmpty()) {
+            System.out.println("Block #" + block.blockNumber + " already executed");
+            return lastExecutedBlock;
+        }
+
+        Collections.reverse(blocksToExecute);
+
+        Block currentBlock = lastExecutedBlock;
+        for (Block b : blocksToExecute) {
+            if (!isValidBlock(b, currentBlock)) {
+                throw new RuntimeException("Block validation failed for block #" + b.blockNumber + " with hash: " + b.blockHash);
+            }
+
+            blockStore.storeBlock(b);
+
+            try {
+                String blockPath = "../blockchain_data/block_" + b.blockNumber + ".json";
+                b.saveToFile(blockPath);
+                System.out.println("Executed and persisted block #" + b.blockNumber + " with hash: " + b.blockHash);
+            } catch (Exception e) {
+                System.err.println("Failed to persist block #" + b.blockNumber + ": " + e.getMessage());
+            }
+
+            currentBlock = b;
+        }
+
+        return currentBlock;
+    }
 
     // Consensus calls this to get the next block to propose
     public static Block buildBlock(Block parent, List<Transaction> pendingTxs) throws Exception {
@@ -58,6 +93,17 @@ public class BlockchainMember {
             if (a2 == null) return false;
             if (a1.balance != a2.balance) return false;
             if (a1.nonce_count != a2.nonce_count) return false;
+
+            if (!java.util.Arrays.equals(a1.code, a2.code)) return false;
+
+            if (a1.storage == null && a2.storage != null) return false;
+            if (a1.storage != null && a2.storage == null) return false;
+            if (a1.storage != null) {
+                if (a1.storage.size() != a2.storage.size()) return false;
+                for (String key : a1.storage.keySet()) {
+                    if (!a1.storage.get(key).equals(a2.storage.get(key))) return false;
+                }
+            }
         }
         return true;
     }
