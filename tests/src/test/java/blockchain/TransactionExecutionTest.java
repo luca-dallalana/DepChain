@@ -25,7 +25,7 @@ public class TransactionExecutionTest {
 
     @BeforeEach
     public void setup() {
-        String projectRoot = "/Users/lucagrespandallalana/Documents/IST/SD/SEC/Project/SEC_project";
+        String projectRoot = "..";
 
         // Generate client addresses
         String client0Addr = AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_0/client_0.pubkey");
@@ -237,18 +237,21 @@ public class TransactionExecutionTest {
         // Execute transaction
         WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
 
-        // Verify gas was deducted
+        // Verify gas was deducted based on actual gas used (not necessarily full gas limit)
         Account client0Final = finalState.getAccount(client0);
-        long gasFee = 1 * 100000;  // gasPrice=1, gasUsed=100,000 (estimated for contract calls)
+        long actualGasFee = client0InitialBalance - client0Final.balance;
+        long maxPossibleGasFee = gasPrice * gasLimit;
 
-        assertEquals(client0InitialBalance - gasFee, client0Final.balance,
-            "Client0 balance should decrease by gas fee only");
+        assertTrue(actualGasFee > 0,
+            "Client0 balance should decrease by a positive gas fee");
+        assertTrue(actualGasFee <= maxPossibleGasFee,
+            "Gas fee should not exceed gasPrice * gasLimit");
 
         // Verify nonce incremented
         assertEquals(1, client0Final.nonce_count, "Client0 nonce should be 1 after contract call");
 
         System.out.println("Client0 balance after contract call: " + client0Final.balance + " DepCoin");
-        System.out.println("Gas fee paid: " + gasFee + " DepCoin");
+        System.out.println("Gas fee paid: " + actualGasFee + " DepCoin");
         System.out.println("Test PASSED\n");
     }
 

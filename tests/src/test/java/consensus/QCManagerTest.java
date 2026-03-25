@@ -1,14 +1,10 @@
 package consensus;
 
-import model.ClientRequest;
 import config.MemberConfig;
 import java.util.List;
-import java.security.SecureRandom;
 import java.security.PublicKey;
-
 import java.util.Arrays;
 
-import model.Node;
 import model.QC;
 import model.Message;
 
@@ -22,23 +18,28 @@ public class QCManagerTest {
     @Test
     public void testAddVoteRejectsDuplicateSender() throws Exception {
         QCManager qcManager = new QCManager(dummyMemberConfig());
-        Node node = new Node(new byte[32], dummyClientRequest(), 0);
+        String blockHash = "block-hash-1";
+
         Message vote1 = new Message();
         vote1.type = "prepare";
         vote1.viewNumber = 0;
-        vote1.node = node;
-        vote1.partialSig = new byte[64];
+        vote1.blockHash = blockHash;
+        vote1.partialSig = qcManager.createPartialSignature("prepare", 0, blockHash);
         vote1.senderPort = 3000;
+
         // Accept first vote
         boolean first = qcManager.addVote(vote1);
+
         // Try to add duplicate vote from same sender
         Message vote2 = new Message();
         vote2.type = "prepare";
         vote2.viewNumber = 0;
-        vote2.node = node;
-        vote2.partialSig = new byte[64];
+        vote2.blockHash = blockHash;
+        vote2.partialSig = qcManager.createPartialSignature("prepare", 0, blockHash);
         vote2.senderPort = 3000;
+
         boolean second = qcManager.addVote(vote2);
+        assertFalse(first, "First vote should not yet form a quorum");
         if (!second) {
             System.out.println("-----------------------------------");
             System.out.println("addVote: duplicate sender rejected");
@@ -51,13 +52,14 @@ public class QCManagerTest {
     @Test
     public void testAddVoteRejectsInvalidPartialSignature() throws Exception {
         QCManager qcManager = new QCManager(dummyMemberConfig());
-        Node node = new Node(new byte[32], dummyClientRequest(), 0);
+
         Message vote = new Message();
         vote.type = "prepare";
         vote.viewNumber = 0;
-        vote.node = node;
+        vote.blockHash = "block-hash-2";
         vote.partialSig = new byte[64];
         vote.senderPort = 3001;
+
         boolean result = qcManager.addVote(vote);
         if (!result) {
             System.out.println("-------------------------------------------");
@@ -71,16 +73,18 @@ public class QCManagerTest {
     @Test
     public void testAddVoteRejectsInvalidJustifyQC() throws Exception {
         QCManager qcManager = new QCManager(dummyMemberConfig());
-        Node node = new Node(new byte[32], dummyClientRequest(), 0);
+
         Message vote = new Message();
         vote.type = "new-view";
         vote.viewNumber = 0;
-        vote.node = node;
+        vote.blockHash = "block-hash-3";
         vote.partialSig = new byte[64];
         vote.senderPort = 3002;
-        QC invalidQC = new QC("prepare", 0, node, null); // no sig, not enough signers
+
+        QC invalidQC = new QC("prepare", 0, "invalid-qc-block-hash", null); // no sig, not enough signers
         invalidQC.signers = Collections.singletonList(0);
         vote.justify = invalidQC;
+
         boolean result = qcManager.addVote(vote);
         if (!result) {
             System.out.println("-----------------------------------------------------");
@@ -88,15 +92,6 @@ public class QCManagerTest {
             System.out.println("-----------------------------------------------------");
         }
         assertFalse(result, "addVote should reject new-view vote with invalid justify QC");
-    }
-    // Helper to generate random bytes for keys
-    private static byte[] randomBytes(int len) {
-        byte[] b = new byte[len];
-        new SecureRandom().nextBytes(b);
-        return b;
-    }
-    private static ClientRequest dummyClientRequest() {
-        return new ClientRequest(1, 0, "dummy", new byte[0]);
     }
 
     private static MemberConfig dummyMemberConfig() {
@@ -114,8 +109,7 @@ public class QCManagerTest {
     }
     @Test
     public void testQCWithNoSignature() {
-        Node fakeNode = new Node(new byte[32], dummyClientRequest(), 0);
-        QC qc = new QC("prepare", 1, fakeNode, null); // No signature
+        QC qc = new QC("prepare", 1, "fake-block-hash-1", null); // No signature
         qc.signers = Collections.singletonList(0);
         QCManager qcManager = new QCManager(dummyMemberConfig());
         boolean result = qcManager.verifyQC(qc);
@@ -129,8 +123,7 @@ public class QCManagerTest {
 
     @Test
     public void testQCWithWrongNumberOfSigners() {
-        Node fakeNode = new Node(new byte[32], dummyClientRequest(), 0);
-        QC qc = new QC("prepare", 1, fakeNode, new byte[64]);
+        QC qc = new QC("prepare", 1, "fake-block-hash-2", new byte[64]);
         qc.signers = Arrays.asList(0); // Only one signer
         QCManager qcManager = new QCManager(dummyMemberConfig());
         boolean result = qcManager.verifyQC(qc);
@@ -144,8 +137,7 @@ public class QCManagerTest {
 
     @Test
     public void testQCWithWrongSignature() {
-        Node fakeNode = new Node(new byte[32], dummyClientRequest(), 0);
-        QC qc = new QC("prepare", 1, fakeNode, new byte[64]); // wrong signature
+        QC qc = new QC("prepare", 1, "fake-block-hash-3", new byte[64]); // wrong signature
         qc.signers = Arrays.asList(0, 1, 2);
         QCManager qcManager = new QCManager(dummyMemberConfig());
         boolean result = qcManager.verifyQC(qc);

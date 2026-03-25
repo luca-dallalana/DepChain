@@ -17,7 +17,7 @@ public class GenesisBlockTest {
     public void testGenesisCreation() {
         System.out.println("=== Genesis Block Creation Test ===\n");
 
-        String projectRoot = "/Users/lucagrespandallalana/Documents/IST/SD/SEC/Project/SEC_project";
+        String projectRoot = "..";
 
         // Clean up existing genesis file if it exists
         String genesisPath = projectRoot + "/blockchain_data/genesis_block.json";

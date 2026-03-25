@@ -1,25 +1,32 @@
-package member;
+package consensus;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import model.ClientRequest;
-import model.Node;
-import model.QC;
+import java.net.DatagramSocket;
+import java.util.ArrayList;
+
+import blockchain.Block;
+import blockchain.BlockStore;
+import blockchain.WorldState;
+import config.MemberConfig;
+import member.DepChainMember;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import config.MemberConfig;
-import java.net.DatagramSocket;
+import model.QC;
 
 public class SafeNodeTest {
     private DepChainMember member;
     private MemberConfig dummyConfig;
-    private java.net.DatagramSocket dummySocket;
+    private DatagramSocket dummySocket;
+    private Block genesis;
 
     @BeforeEach
     public void setUp() throws Exception {
         dummyConfig = dummyMemberConfig();
-        dummySocket = new java.net.DatagramSocket(); 
+        dummySocket = new DatagramSocket();
         member = new DepChainMember(dummyConfig, dummySocket);
+        genesis = initializeBlockStore(member);
     }
 
     private static MemberConfig dummyMemberConfig() {
@@ -36,97 +43,72 @@ public class SafeNodeTest {
         return config;
     }
 
-    // Test: When lockedQC is null, safeNode should return true if node extends from qc.node (descendant case)
+    // Test: When lockedQC is null, safeBlock should return true if block extends from qc.blockHash.
     @Test
-    public void testSafeNode_LockedQCNull_ExtendsFrom() throws Exception {
+    public void testSafeBlock_LockedQCNull_ExtendsFrom() throws Exception {
+        Block child = Block.createLeaf(genesis, new ArrayList<>(), new WorldState());
+        storeBlock(member, child);
+        QC qc = new QC("prepare", 0, genesis.blockHash, null);
 
-        Node parent = getFirstNode(member); 
-        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", new byte[]{1,2,3});
-        Node child = Node.createLeaf(parent, cmd);
-        storeNode(member, child);
-        QC qc = new QC("prepare", 0, parent, null);
+        boolean result = member.safeBlock(child, qc);
 
-        boolean result = member.safeNode(child, qc);
-
-        if (result) {
-            System.out.println("---------------------------------------------------------------------");
-            System.out.println("safeNode: safe because lockedQC is null and node extends from qc.node");
-            System.out.println("---------------------------------------------------------------------");
-        } 
-        assertTrue(result, "safeNode should return true when lockedQC is null and node extends from qc.node");
+        assertTrue(result, "safeBlock should return true when lockedQC is null and block extends from qc.blockHash");
     }
 
-    // Test: When lockedQC is set, safeNode should return true if node extends from lockedQC.node (safety rule)
+    // Test: When lockedQC is set, safeBlock should return true if block extends from lockedQC.blockHash.
     @Test
-    public void testSafeNode_LockedQCNotNull_ExtendsFrom() throws Exception {
-
-        Node parent = getFirstNode(member); 
-        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", new byte[]{1,2,3});
-        Node child = Node.createLeaf(parent, cmd);
-        storeNode(member, child);
-        QC lockedQC = new QC("pre-commit", 0, parent, null);
-        QC qc = new QC("prepare", 0, parent, null);
+    public void testSafeBlock_LockedQCNotNull_ExtendsFrom() throws Exception {
+        Block child = Block.createLeaf(genesis, new ArrayList<>(), new WorldState());
+        storeBlock(member, child);
+        QC lockedQC = new QC("pre-commit", 0, genesis.blockHash, null);
+        QC qc = new QC("prepare", 0, genesis.blockHash, null);
         setLockedQC(member, lockedQC);
 
-        boolean result = member.safeNode(child, qc);
+        boolean result = member.safeBlock(child, qc);
 
-        if (result) {
-            System.out.println("------------------------------------------------------");
-            System.out.println("safeNode: safe because node extends from lockedQC.node");
-            System.out.println("------------------------------------------------------");
-        }
-        assertTrue(result, "safeNode should return true when node extends from lockedQC.node");
+        assertTrue(result, "safeBlock should return true when block extends from lockedQC.blockHash");
     }
 
-    // Test: When lockedQC is set, safeNode should return true if qc.viewNumber > lockedQC.viewNumber (liveness rule)
+    // Test: When lockedQC is set, safeBlock should return true if qc.viewNumber > lockedQC.viewNumber.
     @Test
-    public void testSafeNode_LockedQCNotNull_HigherView() throws Exception {
+    public void testSafeBlock_LockedQCNotNull_HigherView() throws Exception {
+        Block unrelated = new Block(null, null, new ArrayList<>(), new WorldState(), 10);
+        unrelated.blockHash = unrelated.depHash();
+        storeBlock(member, unrelated);
 
-        Node parent = getFirstNode(member); 
-        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", new byte[]{1,2,3});
-        Node child = Node.createLeaf(parent, cmd);
-        storeNode(member, child);
-        QC lockedQC = new QC("pre-commit", 0, parent, null);
-        QC qc = new QC("prepare", 5, parent, null); // higher view
+        QC lockedQC = new QC("pre-commit", 5, genesis.blockHash, null);
+        QC qc = new QC("prepare", 6, unrelated.blockHash, null); // higher view
         setLockedQC(member, lockedQC);
 
-        boolean result = member.safeNode(child, qc);
+        boolean result = member.safeBlock(unrelated, qc);
 
-        if (result) {
-            System.out.println("----------------------------------------------------------");
-            System.out.println("safeNode: safe because qc.viewNumber > lockedQC.viewNumber");
-            System.out.println("----------------------------------------------------------");
-        }
-        assertTrue(result, "safeNode should return true when qc.viewNumber > lockedQC.viewNumber");
+        assertTrue(result, "safeBlock should return true when qc.viewNumber > lockedQC.viewNumber");
     }
-    // Test: When lockedQC is set, safeNode should return false if node does not extend from lockedQC.node and qc.viewNumber <= lockedQC.viewNumber (unsafe case)
-    @Test
-    public void testSafeNode_LockedQCNotNull_FalseCase() throws Exception {
 
-        Node parent = getFirstNode(member); 
-        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", new byte[]{1,2,3});
-        Node unrelated = new Node(null, new ClientRequest(1, 0, "", null), 0);
-        storeNode(member, unrelated);
-        QC lockedQC = new QC("pre-commit", 5, parent, null);
-        QC qc = new QC("prepare", 2, unrelated, null); // lower view, unrelated node
+    // Test: When lockedQC is set, safeBlock should return false if it does not extend and view is not higher.
+    @Test
+    public void testSafeBlock_LockedQCNotNull_FalseCase() throws Exception {
+        Block unrelated = new Block(null, null, new ArrayList<>(), new WorldState(), 20);
+        unrelated.blockHash = unrelated.depHash();
+        storeBlock(member, unrelated);
+
+        QC lockedQC = new QC("pre-commit", 5, genesis.blockHash, null);
+        QC qc = new QC("prepare", 2, unrelated.blockHash, null); // lower view, unrelated block
         setLockedQC(member, lockedQC);
 
-        boolean result = member.safeNode(unrelated, qc);
+        boolean result = member.safeBlock(unrelated, qc);
 
-        if (!result) {
-            System.out.println("--------------------------------------------------------------------------------------------------------");
-            System.out.println("safeNode: not safe because it doesn't extend from lockedQC.node and qc.viewNumber <= lockedQC.viewNumber");
-            System.out.println("--------------------------------------------------------------------------------------------------------");
-        } 
-
-        assertFalse(result, "safeNode should return false when node does not extend from lockedQC.node and qc.viewNumber <= lockedQC.viewNumber");
+        assertFalse(result, "safeBlock should return false when block does not extend from lockedQC.blockHash and qc.viewNumber <= lockedQC.viewNumber");
     }
 
-    private Node getFirstNode(DepChainMember member) throws Exception {
-        java.lang.reflect.Field field = DepChainMember.class.getDeclaredField("nodeTree");
+    private Block initializeBlockStore(DepChainMember member) throws Exception {
+        Block first = new Block(null, null, new ArrayList<>(), new WorldState(), 0);
+        BlockStore store = new BlockStore(first);
+
+        java.lang.reflect.Field field = DepChainMember.class.getDeclaredField("blockStore");
         field.setAccessible(true);
-        model.NodeTree nodeTree = (model.NodeTree) field.get(member);
-        return nodeTree.getFirstNode();
+        field.set(member, store);
+        return store.getFirstBlock();
     }
 
 
@@ -140,10 +122,10 @@ public class SafeNodeTest {
         }
     }
 
-    private void storeNode(DepChainMember member, Node node) throws Exception {
-        java.lang.reflect.Field field = DepChainMember.class.getDeclaredField("nodeTree");
+    private void storeBlock(DepChainMember member, Block block) throws Exception {
+        java.lang.reflect.Field field = DepChainMember.class.getDeclaredField("blockStore");
         field.setAccessible(true);
-        model.NodeTree nodeTree = (model.NodeTree) field.get(member);
-        nodeTree.storeNode(node);
+        BlockStore blockStore = (BlockStore) field.get(member);
+        blockStore.storeBlock(block);
     }
 }

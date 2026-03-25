@@ -141,9 +141,9 @@ public class ISTCoinTest {
         evm.printLastTraceLines(10, "Test 4 Step 3 - approve with wrong expectation (REVERT)");
 
         if (result.isSuccess()) {
-            System.out.println("  ❌ FRONTRUNNING PROTECTION FAILED - Transaction should have reverted!");
+            System.out.println("    FRONTRUNNING PROTECTION FAILED - Transaction should have reverted!");
         } else {
-            System.out.println("  ✓ Frontrunning protection working - transaction reverted as expected");
+            System.out.println("    Frontrunning protection working - transaction reverted as expected");
         }
 
         // Step 4: Alice retries with correct expectation (MUST SUCCEED)
@@ -161,7 +161,7 @@ public class ISTCoinTest {
         System.out.println("  Final allowance: " + finalAllowance + " (should be 50)");
         System.out.println("  Match: " + finalAllowance.equals(BigInteger.valueOf(50)));
 
-        System.out.println("✓ Frontrunning attack prevented!");
+        System.out.println("  Frontrunning attack prevented!");
         System.out.println();
 
         // ========== Test 5: Approve with Correct Expected Value ==========

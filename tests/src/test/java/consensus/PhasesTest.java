@@ -2,22 +2,20 @@ package consensus;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.net.DatagramSocket;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
+import blockchain.Transaction;
 import member.DepChainMember;
 import config.MemberConfig;
-import model.ClientRequest;
-import model.Node;
-import model.NodeTree;
 import model.QC;
 import model.Message;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.net.DatagramSocket;
-import java.util.Arrays;
-import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,13 +24,12 @@ public class PhasesTest {
     // Test: handlePrepareReplica should reject message with null justify
     @Test
     public void testHandlePrepareReplicaRejectsNullJustify() throws Exception {
-        
-    
         Message m = new Message();
         m.type = "prepare";
         m.viewNumber = 0;
-        m.node = null;
+        m.blockHash = "dummy-block-hash";
         m.justify = null;
+        m.transactions = Collections.emptyList();
         m.senderPort = 3000; // leader for view 0
     
         PrintStream originalErr = System.err;
@@ -46,8 +43,6 @@ public class PhasesTest {
         } finally {
             System.setErr(originalErr);
         }
-    
-        
         System.out.println("---------------------------------------------");
         System.out.println("handlePrepareReplica: null justify rejected");
         System.out.println("---------------------------------------------");
@@ -56,17 +51,15 @@ public class PhasesTest {
     // Test: handlePrepareReplica should reject message with invalid signature
     @Test
     public void testHandlePrepareReplicaRejectsInvalidSignature() throws Exception {
-        
-    
-        Node parent = getFirstNode();
         byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(1,4001, "cmd", fakeSig);
-        Node child = Node.createLeaf(parent, cmd);
+        Transaction tx = new Transaction(4001, null, null, 1, new byte[0], 21000, 1, 1, fakeSig);
+
         Message m = new Message();
         m.type = "prepare";
         m.viewNumber = 0;
-        m.node = child;
-        m.justify = new QC("prepare", 0, parent, null);
+        m.transactions = List.of(tx);
+        m.blockHash = "dummy-block-hash";
+        m.justify = new QC("prepare", 0, "genesis-hash", null);
         m.senderPort = 3000; // leader for view 0
     
         PrintStream originalErr = System.err;
@@ -76,7 +69,7 @@ public class PhasesTest {
             invokeHandlePrepareReplica(m);
             String output = errContent.toString();
 
-            assertTrue(output.contains("Invalid signature for client command in prepare message, ignoring"), "Output should contain: Invalid signature for client command in prepare message, ignoring");
+            assertTrue(output.contains("Invalid signature for client transaction in block, proposing new view"), "Output should contain: Invalid signature for client transaction in block, proposing new view");
         } finally {
             System.setErr(originalErr);
         }
@@ -89,20 +82,12 @@ public class PhasesTest {
     // Test: handlePrepareReplica should reject message with invalid sender (not from leader)
     @Test
     public void testHandlePrepareReplicaRejectsInvalidSender() throws Exception {
-        
-        
-        Node parent = getFirstNode();
-        String command = "cmd";
-        String PRIVATE_KEY_PATH = "../rsa_keys/client_1/client_1.privatekey";
-        String message = "1:" + command;
-        byte[] validSig = crypto.CryptoLib.sign(message.getBytes(), PRIVATE_KEY_PATH);
-        ClientRequest cmd = new ClientRequest(1,4001, command, validSig);
-        Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "prepare";
         m.viewNumber = 1;
-        m.node = child;
-        m.justify = new QC("prepare", 1, parent, null);
+        m.transactions = Collections.emptyList();
+        m.blockHash = "dummy-block-hash";
+        m.justify = new QC("prepare", 1, "some-parent-hash", null);
         m.justify.signers = Arrays.asList(0, 1, 2);
         m.senderPort = 3002; // not the leader for view 1
         
@@ -116,8 +101,6 @@ public class PhasesTest {
         } finally {
             System.setErr(originalErr);
         }
-        
-        
         System.out.println("---------------------------------------------");
         System.out.println("handlePrepareReplica: invalid sender rejected");
         System.out.println("---------------------------------------------");
@@ -131,18 +114,12 @@ public class PhasesTest {
         curViewField.setAccessible(true);
         curViewField.setInt(member, 1);
 
-        Node parent = getFirstNode();
-        String command = "cmd";
-        String PRIVATE_KEY_PATH = "../rsa_keys/client_1/client_1.privatekey";
-        String message = "1:" + command;
-        byte[] validSig = crypto.CryptoLib.sign(message.getBytes(), PRIVATE_KEY_PATH);
-        ClientRequest cmd = new ClientRequest(1,4001, command, validSig);
-        Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "prepare";
         m.viewNumber = 1;
-        m.node = child;
-        m.justify = new QC("prepare", 1, parent, null); // invalid QC (no valid signature)
+        m.transactions = Collections.emptyList();
+        m.blockHash = "dummy-block-hash";
+        m.justify = new QC("prepare", 1, "some-parent-hash", null); // invalid QC (no valid signature)
         m.justify.signers = Arrays.asList(0, 1, 2);
         m.senderPort = 3001; // leader for view 1
 
@@ -157,7 +134,6 @@ public class PhasesTest {
             System.setErr(originalErr);
         }
 
-        
         System.out.println("--------------------------------------------------");
         System.out.println("handlePrepareReplica: invalid justify QC rejected");
         System.out.println("--------------------------------------------------");
@@ -165,17 +141,12 @@ public class PhasesTest {
     // Test: handlePreCommitReplica should reject message with QC of wrong type
     @Test
     public void testHandlePreCommitReplicaRejectsWrongTypeQC() throws Exception {
-        
-
-        Node parent = getFirstNode();
-        byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(1,4001, "cmd", fakeSig);
-        Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "prepare";
         m.viewNumber = 0;
-        m.node = child;
-        m.justify = new QC("commit", 0, parent, null); // wrong type QC
+        m.transactions = Collections.emptyList();
+        m.blockHash = "dummy-block-hash";
+        m.justify = new QC("commit", 0, "some-parent-hash", null); // wrong type QC
         m.senderPort = 3000; // leader for view 0
         m.justify.signers = Arrays.asList(0, 1, 2);
 
@@ -194,7 +165,6 @@ public class PhasesTest {
             System.setErr(originalErr);
         }
 
-        
         System.out.println("----------------------------------------------");
         System.out.println("handlePreCommitReplica: wrong type QC rejected");
         System.out.println("----------------------------------------------");
@@ -203,13 +173,12 @@ public class PhasesTest {
     // Test: handlePreCommitReplica should reject message with null justify
     @Test
     public void testHandlePreCommitReplicaRejectsNullJustify() throws Exception {
-        
-        
         Message m = new Message();
         m.type = "pre-commit";
         m.viewNumber = 0;
-        m.node = null;
+        m.blockHash = "dummy-block-hash";
         m.justify = null;
+        m.transactions = Collections.emptyList();
         m.senderPort = 3000; // leader for view 0
         
         PrintStream originalErr = System.err;
@@ -223,8 +192,6 @@ public class PhasesTest {
         } finally {
             System.setErr(originalErr);
         }
-        
-        
         System.out.println("---------------------------------------------");
         System.out.println("handlePreCommitReplica: null justify rejected");
         System.out.println("---------------------------------------------");
@@ -233,17 +200,12 @@ public class PhasesTest {
     // Test: handlePreCommitReplica should reject message with invalid sender
     @Test
     public void testHandlePreCommitReplicaRejectsInvalidSender() throws Exception {
-        
-        
-        Node parent = getFirstNode();
-        byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(1,4001, "cmd", fakeSig);
-        Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "pre-commit";
         m.viewNumber = 0;
-        m.node = child;
-        m.justify = new QC("prepare", 0, parent, null);
+        m.transactions = Collections.emptyList();
+        m.blockHash = "dummy-block-hash";
+        m.justify = new QC("prepare", 0, "some-parent-hash", null);
         m.justify.signers = Arrays.asList(0, 1, 2);
         m.senderPort = 3002; // not the leader for view 0
         
@@ -257,8 +219,6 @@ public class PhasesTest {
         } finally {
             System.setErr(originalErr);
         }
-        
-        
         System.out.println("-----------------------------------------------");
         System.out.println("handlePreCommitReplica: invalid sender rejected");
         System.out.println("-----------------------------------------------");
@@ -267,17 +227,12 @@ public class PhasesTest {
     // Test: handlePreCommitReplica should reject message with invalid justify QC
     @Test
     public void testHandlePreCommitReplicaRejectsInvalidJustifyQC() throws Exception {
-        
-        
-        Node parent = getFirstNode();
-        byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", fakeSig);
-        Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "pre-commit";
         m.viewNumber = 0;
-        m.node = child;
-        m.justify = new QC("prepare", 1, parent, null); // invalid QC (no valid signature)
+        m.transactions = Collections.emptyList();
+        m.blockHash = "dummy-block-hash";
+        m.justify = new QC("prepare", 1, "some-parent-hash", null); // invalid QC (no valid signature)
         m.justify.signers = Arrays.asList(0, 1, 2);
         m.senderPort = 3000; // leader for view 0
         
@@ -292,8 +247,6 @@ public class PhasesTest {
         } finally {
             System.setErr(originalErr);
         }
-        
-        
         System.out.println("---------------------------------------------------");
         System.out.println("handlePreCommitReplica: invalid justify QC rejected");
         System.out.println("---------------------------------------------------");
@@ -302,17 +255,12 @@ public class PhasesTest {
     // Test: handleCommitReplica should reject message with QC of wrong type
     @Test
     public void testHandleCommitReplicaRejectsWrongTypeQC() throws Exception {
-        
-
-        Node parent = getFirstNode();
-        byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", fakeSig);
-        Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "pre-commit";
         m.viewNumber = 0;
-        m.node = child;
-        m.justify = new QC("prepare", 0, parent, null); // wrong type QC
+        m.transactions = Collections.emptyList();
+        m.blockHash = "dummy-block-hash";
+        m.justify = new QC("prepare", 0, "some-parent-hash", null); // wrong type QC
         m.justify.signers = Arrays.asList(0, 1, 2);
         m.senderPort = 3000; // leader for view 0
         PrintStream originalErr = System.err;
@@ -329,7 +277,6 @@ public class PhasesTest {
             System.setErr(originalErr);
         }
 
-        
         System.out.println("-------------------------------------------");
         System.out.println("handleCommitReplica: wrong type QC rejected");
         System.out.println("-------------------------------------------");
@@ -337,13 +284,12 @@ public class PhasesTest {
     // Test: handleCommitReplica should reject message with null justify
     @Test
     public void testHandleCommitReplicaRejectsNullJustify() throws Exception {
-        
-
         Message m = new Message();
         m.type = "commit";
         m.viewNumber = 0;
-        m.node = null;
+        m.blockHash = "dummy-block-hash";
         m.justify = null;
+        m.transactions = Collections.emptyList();
         m.senderPort = 3000; // leader for view 0
 
         PrintStream originalErr = System.err;
@@ -358,7 +304,6 @@ public class PhasesTest {
             System.setErr(originalErr);
         }
 
-        
         System.out.println("-------------------------------------------");
         System.out.println("handleCommitReplica: null justify rejected");
         System.out.println("-------------------------------------------");
@@ -367,17 +312,12 @@ public class PhasesTest {
     // Test: handleCommitReplica should reject message with invalid sender
     @Test
     public void testHandleCommitReplicaRejectsInvalidSender() throws Exception {
-        
-
-        Node parent = getFirstNode();
-        byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", fakeSig);
-        Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "commit";
         m.viewNumber = 0;
-        m.node = child;
-        m.justify = new QC("pre-commit", 0, parent, null);
+        m.transactions = Collections.emptyList();
+        m.blockHash = "dummy-block-hash";
+        m.justify = new QC("pre-commit", 0, "some-parent-hash", null);
         m.justify.signers = Arrays.asList(0, 1, 2);
         m.senderPort = 3002; // not the leader
 
@@ -392,7 +332,6 @@ public class PhasesTest {
             System.setErr(originalErr);
         }
 
-        
         System.out.println("--------------------------------------------");
         System.out.println("handleCommitReplica: invalid sender rejected");
         System.out.println("--------------------------------------------");
@@ -401,17 +340,12 @@ public class PhasesTest {
     // Test: handleCommitReplica should reject message with invalid justify QC
     @Test
     public void testHandleCommitReplicaRejectsInvalidJustifyQC() throws Exception {
-        
-
-        Node parent = getFirstNode();
-        byte[] fakeSig = new byte[256];
-        ClientRequest cmd = new ClientRequest(1, 4001, "cmd", fakeSig);
-        Node child = Node.createLeaf(parent, cmd);
         Message m = new Message();
         m.type = "commit";
         m.viewNumber = 0;
-        m.node = child;
-        m.justify = new QC("pre-commit", 1, parent, null); // invalid QC (no valid signature)
+        m.transactions = Collections.emptyList();
+        m.blockHash = "dummy-block-hash";
+        m.justify = new QC("pre-commit", 1, "some-parent-hash", null); // invalid QC (no valid signature)
         m.justify.signers = Arrays.asList(0, 1, 2);
         m.senderPort = 3000; // leader for view 0
 
@@ -427,7 +361,6 @@ public class PhasesTest {
             System.setErr(originalErr);
         }
 
-        
         System.out.println("------------------------------------------------");
         System.out.println("handleCommitReplica: invalid justify QC rejected");
         System.out.println("------------------------------------------------");
@@ -473,16 +406,6 @@ public class PhasesTest {
         java.util.List<byte[]> pubKeys = java.util.List.of(new byte[48], new byte[48], new byte[48], new byte[48]);
         config.initializeBLSKeys(privKey, pubKeys);
         return config;
-    }
-
-    // Test: handlePrepareReplica should reject message with null justify
-
-    // Helper to get the firstNode from the member's NodeTree
-    private Node getFirstNode() throws Exception {
-        java.lang.reflect.Field field = DepChainMember.class.getDeclaredField("nodeTree");
-        field.setAccessible(true);
-        model.NodeTree nodeTree = (model.NodeTree) field.get(member);
-        return nodeTree.getFirstNode();
     }
 
     // Helper to invoke private handlePrepareReplica
