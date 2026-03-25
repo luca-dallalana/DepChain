@@ -2,7 +2,9 @@ package member;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.util.Map;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.gson.Gson;
 
@@ -36,6 +38,7 @@ public class DepChainMember implements DeliveryListener{
     private final MemberConfig memberConfig; // All replica information
     private final QCManager qcManager;
     private final DepChainUtil util;
+    private final Map<String, Block> pendingPreparedBlocks; // Stores blocks that the replica voted in prepare but not yet presisted in pre-commit
     private Block currentProposal; // Track leader's proposal
     private int lastExecutedHeight; // Track last executed command height
     private Block lastExecutedBlock; // Track last executed block
@@ -58,6 +61,7 @@ public class DepChainMember implements DeliveryListener{
         // Initialize QC management
         this.qcManager = new QCManager(memberConfig);
         this.util = new DepChainUtil(qcManager);
+        this.pendingPreparedBlocks = new ConcurrentHashMap<>();
 
     }
 
@@ -306,6 +310,11 @@ public class DepChainMember implements DeliveryListener{
 
             Block maxQCBlock = blockStore.getBlockByHash(maxQC.blockHash);//FIXME this could go wrong if leader doesn't have the block
 
+            if (maxQCBlock == null) { //FIXME this is for testing but its a real issue to fix
+                System.err.println("MaxQC block not found in block store, -- ERROR --");
+                return;
+            }
+
             if (memberConfig.getPendingCommands().isEmpty()) { // FIXME: fica dificil propor no-op sem no-op
                 System.out.println("No pending client commands, proposing NO-OP");
                 curProposal = BlockchainMember.buildBlock(maxQCBlock, memberConfig.getPendingTransactions());
@@ -316,7 +325,7 @@ public class DepChainMember implements DeliveryListener{
 
             this.currentProposal = curProposal; // Store for QC formation
 
-            Message prepareMsg = util.voteMsg("prepare", curProposal, curProposal.blockHash, maxQC, curView);
+            Message prepareMsg = util.voteMsg("prepare", curProposal.transactions, curProposal.blockHash, maxQC, curView);
             prepareMsg.senderPort = memberConfig.getID() + 3000;
             qcManager.addVote(prepareMsg);
             broadcast(prepareMsg);
@@ -335,7 +344,7 @@ public class DepChainMember implements DeliveryListener{
                 proposeNewView();
                 return;
             }
-            for (Transaction tx : m.block.transactions) {
+            for (Transaction tx : m.transactions) {
                 int senderId = tx.senderPort - 4000;
                 String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
     
@@ -380,13 +389,23 @@ public class DepChainMember implements DeliveryListener{
             }
 
             Block parentBlock = blockStore.getBlockByHash(m.justify.blockHash);
-            if (!BlockchainMember.isValidBlock(m.block, parentBlock)) {
+            Block proposedBlock = BlockchainMember.buildBlock(parentBlock, m.transactions); // we build the block based on the qc that supports it and the transactions sent by leader
+
+            if (!proposedBlock.blockHash.equals(m.blockHash)) { //FIXME this makes sence right?
+                System.err.println("Proposed block hash does not match block hash in prepare message");
+                proposeNewView();
+                return;
+            }
+
+            if (!BlockchainMember.isValidBlock(proposedBlock, parentBlock)) {
                 System.err.println("Block failed state validation in prepare message");
                 proposeNewView();
                 return;
             }
 
-            if (blockStore.extendsFrom(m.block, m.justify.blockHash) && safeBlock(m.block, m.justify)) {
+            if (blockStore.extendsFrom(proposedBlock, m.justify.blockHash) && safeBlock(proposedBlock, m.justify)) {
+                // Keep the validated proposal so we can reference it in pre-commit without rebuilding
+                pendingPreparedBlocks.put(proposedBlock.blockHash, proposedBlock);
                 startTimeout();
                 Message voteMsg = util.voteMsg("prepare", null, m.blockHash, null, curView);
                 voteMsg.senderPort = memberConfig.getID() + 3000;
@@ -406,7 +425,7 @@ public class DepChainMember implements DeliveryListener{
         try {
             prepareQC = qcManager.formQC("prepare", curView, currentProposal.blockHash);
             blockStore.storeBlock(currentProposal);
-            Message preCommitMsg = util.voteMsg("pre-commit", currentProposal, currentProposal.blockHash, prepareQC, curView);
+            Message preCommitMsg = util.voteMsg("pre-commit", null, currentProposal.blockHash, prepareQC, curView);
             preCommitMsg.senderPort = memberConfig.getID() + 3000;
             qcManager.addVote(preCommitMsg);
             broadcast(preCommitMsg);
@@ -446,10 +465,22 @@ public class DepChainMember implements DeliveryListener{
 
             startTimeout();
 
-            blockStore.storeBlock(m.block); //FIXME we should check if this block is the same as the one in the QC
+            Block proposedBlock = pendingPreparedBlocks.remove(m.justify.blockHash);
+
+            if (proposedBlock == null) { // the case where we already persisted this block from an earlier path
+                proposedBlock = blockStore.getBlockByHash(m.justify.blockHash);
+            }
+
+            if (proposedBlock == null || !proposedBlock.blockHash.equals(m.justify.blockHash)) {
+                System.err.println("Prepared block not available or hash mismatch in pre-commit message");
+                proposeNewView();
+                return;
+            }
+
+            blockStore.storeBlock(proposedBlock);
             prepareQC = m.justify;
 
-            Message voteMsg = util.voteMsg("pre-commit", null, m.blockHash, m.justify, curView);
+            Message voteMsg = util.voteMsg("pre-commit", null, m.justify.blockHash, m.justify, curView);
             voteMsg.senderPort = memberConfig.getID() + 3000;
 
             int leader = memberConfig.getLeader(curView);

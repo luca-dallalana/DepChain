@@ -5,9 +5,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -88,7 +90,7 @@ public class Block {
 
         Block leaf = new Block(
             null,
-            parent.depHash(),
+            parent.blockHash,
             transactions,
             state,
             parent.blockNumber + 1
@@ -195,7 +197,17 @@ public class Block {
 
             System.out.println("Genesis block hash: " + genesis.blockHash);
 
-            // 9. Save to file (persistence)
+            // 9. Clean the directory (remove old genesis and blocks if any)
+            String blockchainPath = projectRoot + "/blockchain_data";
+            try {
+                if (Files.exists(Paths.get(blockchainPath))) {
+                    deleteDirectory(Paths.get(blockchainPath));
+                }
+            } catch (IOException e) {
+                System.err.println("Error deleting existing blockchain files: " + e.getMessage());
+            }
+
+            // 10. Save to file (persistence)
             String genesisPath = projectRoot + "/blockchain_data/genesis_block.json";
             genesis.saveToFile(genesisPath);
             System.out.println("Genesis block saved to: " + genesisPath);
@@ -207,6 +219,17 @@ public class Block {
         }
     }
 
+    public static void deleteDirectory(Path path) throws IOException {
+        Files.walk(path)
+            .sorted(Comparator.reverseOrder())
+            .forEach(p -> {
+                try {
+                    Files.delete(p);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+    }
 
     public String toJson() {
         return network.GsonUtils.PRETTY_GSON.toJson(this);
