@@ -270,6 +270,7 @@ public class BlockchainMember {
 
                 senderAccount.incrementNonce();
                 gasUsed = 21000; // Fixed gas cost for native transfer FIXME: talvez mudar
+                tx.executionSuccess = true;
 
             } else {
                 EVMHelper.ExecutionResult result = evm.executeCall(tx.from, tx.to, Bytes.wrap(tx.getData()));
@@ -280,6 +281,7 @@ public class BlockchainMember {
                     senderAccount.incrementNonce();
                     trackedAddresses.add(tx.from);
                     System.out.println("Transaction failed due to lack of gas");
+                    tx.executionSuccess = false;
                     continue;
                 }
 
@@ -288,9 +290,11 @@ public class BlockchainMember {
                     senderAccount.incrementNonce();
                     trackedAddresses.add(tx.from);
                     System.out.println("Contract call failed");
+                    tx.executionSuccess = false;
                     continue;
                 }
                 senderAccount.incrementNonce();
+                tx.executionSuccess = true;
             }
 
             senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));

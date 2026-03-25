@@ -12,6 +12,7 @@ import org.hyperledger.besu.datatypes.Address;
 
 import blockchain.GetBalance;
 import blockchain.Transaction;
+import blockchain.TransactionResponse;
 import blockchain.evm.ABIEncoder;
 import config.ClientConfig;
 import crypto.CryptoLib;
@@ -73,8 +74,6 @@ public class Client implements DeliveryListener{
                     Long gasPrice = readLong(scanner, "Enter gasPrice: ");
                     Address fromAddress = config.getAccountAddress(config.getID());
 
-                    sequenceNumber++;
-
                     Transaction DepCoinTransferRequest = new Transaction(
                         config.getPort(),
                         fromAddress,
@@ -86,6 +85,8 @@ public class Client implements DeliveryListener{
                         sequenceNumber,
                         null
                     );
+
+                    sequenceNumber++;
 
                     try {
                         sendTransaction(DepCoinTransferRequest);
@@ -101,7 +102,6 @@ public class Client implements DeliveryListener{
                     Long istGasPrice = readLong(scanner, "Enter gasPrice: ");
                     Address senderAddress = config.getAccountAddress(config.getID());
                     Bytes transferData = ABIEncoder.encodeTransfer(recipientAddress, BigInteger.valueOf(istValue));
-
                     sequenceNumber++;
 
                     Transaction istCoinTransferRequest = new Transaction(
@@ -115,6 +115,7 @@ public class Client implements DeliveryListener{
                         sequenceNumber,
                         null
                     );
+
 
                     try {
                         sendTransaction(istCoinTransferRequest);
@@ -136,8 +137,6 @@ public class Client implements DeliveryListener{
                         BigInteger.valueOf(expectedAllowance)
                     );
 
-                    sequenceNumber++;
-
                     Transaction approveRequest = new Transaction(
                         config.getPort(),
                         ownerAddress,
@@ -149,6 +148,8 @@ public class Client implements DeliveryListener{
                         sequenceNumber,
                         null
                     );
+
+                    sequenceNumber++;
 
                     try {
                         sendTransaction(approveRequest);
@@ -166,8 +167,6 @@ public class Client implements DeliveryListener{
                     Address spenderAddr = config.getAccountAddress(config.getID());
                     Bytes transferFromData = ABIEncoder.encodeTransferFrom(fromAddr, toTfAddress, BigInteger.valueOf(transferFromValue));
 
-                    sequenceNumber++;
-                    
                     Transaction transferFromRequest = new Transaction(
                         config.getPort(),
                         spenderAddr,
@@ -179,6 +178,9 @@ public class Client implements DeliveryListener{
                         sequenceNumber,
                         null
                     );
+
+                    sequenceNumber++;
+
                     try {
                         sendTransaction(transferFromRequest);
                     } catch (Exception e) {
@@ -190,24 +192,24 @@ public class Client implements DeliveryListener{
                     if (depBalanceAddress == null) {
                         break;
                     }
-                    sequenceNumber++;
                     try {
                         sendGetBalance(depBalanceAddress, "DepCoin", sequenceNumber);
                     } catch (IOException e) {
                         System.err.println("Error requesting DepCoin balance: " + e.getMessage());
                     }
+                    sequenceNumber++;
                     break;
                 case "5":
                     Address istBalanceAddress = selectAddressFromList(scanner, "Choose address to check ISTCoin balance:");
                     if (istBalanceAddress == null) {
                         break;
                     }
-                    sequenceNumber++;
                     try {
                         sendGetBalance(istBalanceAddress, "ISTCoin", sequenceNumber);
                     } catch (IOException e) {
                         System.err.println("Error requesting ISTCoin balance: " + e.getMessage());
                     }
+                    sequenceNumber++;
                     break;
                 default:
                     System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Approve), 3 (TransferFrom), 4 (Get DepCoin Balance), 5 (Get ISTCoin Balance), or 6 (Exit)");
@@ -216,7 +218,7 @@ public class Client implements DeliveryListener{
     }
 
     private void sendTransaction(Transaction request) throws Exception {
-        pendingDecisions.put((int) request.getNonce(), new ConcurrentHashMap<>());
+        pendingDecisions.put(request.getNonce(), new ConcurrentHashMap<>());
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
         String packet = "NewTransaction=";
         try {
@@ -232,7 +234,7 @@ public class Client implements DeliveryListener{
     }
 
     private void sendGetBalance(Address address, String coin, int seq) throws IOException{
-        pendingDecisions.put((int) seq, new ConcurrentHashMap<>());
+        pendingDecisions.put(seq, new ConcurrentHashMap<>());
         GetBalance getBalanceRequest = new GetBalance(address, coin, null, -1, seq);
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
         String packet = "GetBalance=";
@@ -279,6 +281,14 @@ public class Client implements DeliveryListener{
             System.out.println("Balance for " + getBalanceReply.getAddress() + " (" + getBalanceReply.getCoin() + "): " + getBalanceReply.getBalance());
             registerDecidedReply(getBalanceReply.getSequenceNumber(), senderPort, reply);
         }
+        if (payload.startsWith("TransactionResponse=")) {
+            String json = payload.substring("TransactionResponse=".length());
+            TransactionResponse txResponse = GsonUtils.GSON.fromJson(json, TransactionResponse.class);
+            String reply = txResponse.getExecutionSuccess() ? "SUCCESS" : "FAILED";
+            System.out.println("Transaction nonce=" + txResponse.getSequenceNumber() +
+                              " execution status: " + reply);
+            registerDecidedReply(txResponse.getSequenceNumber(), senderPort, reply);
+        }
     }
 
     private void registerDecidedReply(int sequence, int senderPort, String reply) {
@@ -294,6 +304,8 @@ public class Client implements DeliveryListener{
             if (matchingReplies >= config.getF() + 1){
                 System.out.println("Transaction seq=" + sequence + " decided: " + reply);
                 pendingDecisions.remove(sequence, repliesByReplica);
+                System.out.print("\n> ");
+                System.out.flush();
             }
         }
     }

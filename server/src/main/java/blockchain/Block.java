@@ -70,7 +70,7 @@ public class Block {
                 writeLong(baos, tx.value);
                 writeLong(baos, tx.gasLimit);
                 writeLong(baos, tx.gasPrice);
-                writeLong(baos, tx.nonce_count);
+                writeInt(baos, tx.nonce_count);
                 writeBytes(baos, tx.data);
                 writeBytes(baos, tx.signature);
             }

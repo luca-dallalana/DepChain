@@ -10,11 +10,12 @@ public class Transaction {
     public byte[] data;         // empty for simple transfers(DepCoin), otherwise contains ABI-encoded function call
     public long gasLimit;       // Max gas to use
     public long gasPrice;       // Price per gas unit
-    public long nonce_count;    // Sender nonce_count
+    public int nonce_count;     // Sender nonce_count
     public byte[] signature;    // Transaction signature
+    public Boolean executionSuccess;  // null = not executed, true = success, false = failed
 
     public Transaction(int senderPort, Address from, Address to, long value, byte[] data,
-                      long gasLimit, long gasPrice, long nonce_count, byte[] signature) {
+                      long gasLimit, long gasPrice, int nonce_count, byte[] signature) {
         this.senderPort = senderPort;
         this.from = from;
         this.to = to;
@@ -24,6 +25,7 @@ public class Transaction {
         this.gasPrice = gasPrice;
         this.nonce_count = nonce_count;
         this.signature = signature;
+        this.executionSuccess = null;
     }
 
     public Transaction() {}  
@@ -44,6 +46,7 @@ public class Transaction {
     public byte[] getData() { return data; }
     public long getGasLimit() { return gasLimit; }
     public long getGasPrice() { return gasPrice; }
-    public long getNonce() { return nonce_count; }
+    public int getNonce() { return nonce_count; }
     public byte[] getSignature() { return signature; }
+    public Boolean getExecutionSuccess() { return executionSuccess; }
 }

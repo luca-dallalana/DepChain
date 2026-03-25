@@ -13,6 +13,7 @@ import blockchain.BlockStore;
 import blockchain.BlockchainMember;
 import blockchain.GetBalance;
 import blockchain.Transaction;
+import blockchain.TransactionResponse;
 import config.MemberConfig;
 import consensus.QCManager;
 import crypto.CryptoLib;
@@ -47,7 +48,7 @@ public class DepChainMember implements DeliveryListener{
     private Block lastExecutedBlock; // Track last executed block
     private int timeoutCount = 1; // Track number of timeouts for exponential backoff
 
-    private static final long PHASE_TIMEOUT_MS = 200;
+    private static final long PHASE_TIMEOUT_MS = 3000;  // 3 seconds for testing
     private Thread timeoutThread;
 
     public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
@@ -557,6 +558,14 @@ public class DepChainMember implements DeliveryListener{
             broadcast(decideMsg);
             Block block = blockStore.getBlockByHash(commitQC.blockHash);
             this.lastExecutedBlock = BlockchainMember.executeBlock(block, blockStore, lastExecutedBlock);
+
+            for (Transaction tx : block.transactions) {
+                sendTransactionResponse(tx);
+                if (tx.senderPort >= 4000) {
+                    memberConfig.setLastSequenceForClient(tx.senderPort, tx.nonce_count);
+                    memberConfig.removePendingTransaction(tx);
+                }
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -591,6 +600,14 @@ public class DepChainMember implements DeliveryListener{
         startTimeout();
         Block block = blockStore.getBlockByHash(m.justify.blockHash);
         this.lastExecutedBlock = BlockchainMember.executeBlock(block, blockStore, lastExecutedBlock);
+
+        for (Transaction tx : block.transactions) {
+            sendTransactionResponse(tx);
+            if (tx.senderPort >= 4000) {
+                memberConfig.setLastSequenceForClient(tx.senderPort, tx.nonce_count);
+                memberConfig.removePendingTransaction(tx);
+            }
+        }
     }
 
     private QC getMaxQC() { //maybe put this in utils
@@ -750,6 +767,13 @@ public class DepChainMember implements DeliveryListener{
             Block latestBlock = blockList.get(0);
             this.lastExecutedBlock = BlockchainMember.executeBlock(latestBlock, blockStore, lastExecutedBlock);
             System.out.println("Caught up to block height " + lastExecutedBlock.blockNumber);
+
+            for (Transaction tx : latestBlock.transactions) {
+                if (tx.senderPort >= 4000) {
+                    memberConfig.setLastSequenceForClient(tx.senderPort, tx.nonce_count);
+                    memberConfig.removePendingTransaction(tx);
+                }
+            }
         }
     }
 
@@ -770,6 +794,29 @@ public class DepChainMember implements DeliveryListener{
             networkLayerLib.alpSend(responseJson, "localhost", senderPort);
         } catch (IOException e) {
             System.err.println("Error sending GetBalance response: " + e.getMessage());
+        }
+    }
+
+    private void sendTransactionResponse(Transaction tx) {
+        if (tx.senderPort < 4000) {
+            return;
+        }
+
+        if (tx.executionSuccess == null) {
+            System.err.println("Warning: Transaction has null executionSuccess, skipping response");
+            return;
+        }
+
+        TransactionResponse response = new TransactionResponse(
+            tx.executionSuccess,
+            tx.getNonce()
+        );
+
+        String responseJson = "TransactionResponse=" + GsonUtils.GSON.toJson(response);
+        try {
+            networkLayerLib.alpSend(responseJson, "localhost", tx.senderPort);
+        } catch (IOException e) {
+            System.err.println("Error sending transaction response: " + e.getMessage());
         }
     }
 

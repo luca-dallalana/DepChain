@@ -108,7 +108,10 @@ public class MemberConfig {
     }
 
     public void removePendingTransaction(Transaction transaction) {
-        this.pendingTransactions.remove(transaction);
+        this.pendingTransactions.removeIf(tx ->
+            tx.senderPort == transaction.senderPort &&
+            tx.nonce_count == transaction.nonce_count
+        );
     }
 
 
@@ -126,7 +129,7 @@ public class MemberConfig {
     }
 
     public int getLastSequenceForClient(int clientPort) {
-        return ClientsLastSequence.getOrDefault(clientPort, 0);
+        return ClientsLastSequence.getOrDefault(clientPort, -1);
     }
 
     public void setLastSequenceForClient(int clientPort, int sequenceNumber) {
