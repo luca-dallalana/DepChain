@@ -90,7 +90,14 @@
             <artifactId>besu-datatypes</artifactId>
             <version>25.2.1</version>
         </dependency>
-        
+
+        <!-- Web3j for storage key computation -->
+        <dependency>
+            <groupId>org.web3j</groupId>
+            <artifactId>crypto</artifactId>
+            <version>5.0.2</version>
+        </dependency>
+
     </dependencies>
 
     <build>

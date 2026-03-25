@@ -1,6 +1,8 @@
 package blockchain;
 
 import org.hyperledger.besu.datatypes.Address;
+import org.web3j.crypto.Hash;
+import org.web3j.utils.Numeric;
 
 
 public class GetBalance {
@@ -40,5 +42,22 @@ public class GetBalance {
 
     public int getSequenceNumber() {
         return sequenceNumber;
+    }
+
+    public static String computeMappingStorageKey(String address) {
+        String cleanAddress = address.startsWith("0x") ? address.substring(2) : address;
+
+        // Left-pad address to 32 bytes (64 hex chars)
+        String paddedAddress = String.format("%64s", cleanAddress).replace(' ', '0');
+
+        // Left-pad slot 0 to 32 bytes (64 hex chars) - balances mapping is always at slot 0
+        String paddedSlot = "0000000000000000000000000000000000000000000000000000000000000000";
+
+        // Concatenate and hash with keccak256
+        byte[] concatenated = Numeric.hexStringToByteArray(paddedAddress + paddedSlot);
+        byte[] hash = Hash.sha3(concatenated);
+
+        // Return with 0x prefix
+        return Numeric.toHexString(hash);
     }
 }

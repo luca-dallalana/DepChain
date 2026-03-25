@@ -25,6 +25,9 @@ import network.GsonUtils;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
 import util.DepChainUtil;
+import org.hyperledger.besu.datatypes.Address;
+import blockchain.Account;
+
 public class DepChainMember implements DeliveryListener{
     private NetworkLayerLib networkLayerLib;
     private int curView;          // current view number
@@ -125,31 +128,26 @@ public class DepChainMember implements DeliveryListener{
             String coin = request.getCoin();
             if (coin.equals("DepCoin")) {
                 long balance = lastExecutedBlock.state.getAccount(request.getAddress()).getBalance();
-                GetBalance response = new GetBalance(request.getAddress(), coin, null, balance, request.getSequenceNumber());
-                String responseJson = "GetBalanceResponse=" + GsonUtils.GSON.toJson(response);
-                try {
-                    networkLayerLib.alpSend(responseJson, "localhost", senderPort);
-                } catch (IOException e) {
-                    System.err.println("Error sending GetBalance response: " + e.getMessage());
-                }
+                sendBalanceResponse(request, balance, senderPort);
+                return;
             }
-            /*
+
             if (coin.equals("ISTCoin")) {
-                long balance = lastExecutedBlock.state.getAccount(request.getAddress()).getStorage();
-                GetBalance response = new GetBalance(request.getAddress(), coin, null, balance, request.getSequenceNumber());
-                String responseJson = "GetBalanceResponse=" + GsonUtils.GSON.toJson(response);
-                try {
-                    networkLayerLib.alpSend(responseJson, "localhost", senderPort);
-                } catch (IOException e) {
-                    System.err.println("Error sending GetBalance response: " + e.getMessage());
+                Address istCoinAddress = Address.fromHexString(Block.IST_COIN_ADDRESS);
+                Account istCoinAccount = lastExecutedBlock.state.getAccount(istCoinAddress);
+
+                String storageKey = GetBalance.computeMappingStorageKey(request.getAddress().toHexString());
+
+                String balanceHex = istCoinAccount.getStorage().get(storageKey);
+
+                long balance = 0;
+                if (balanceHex != null && !balanceHex.equals("0x0")) {
+                    balance = Long.parseLong(balanceHex.substring(2), 16);
                 }
+
+                sendBalanceResponse(request, balance, senderPort);
+                return;
             }
-            */
-            try {
-                    networkLayerLib.alpSend("GetBalanceResponse=ERROR", "localhost", senderPort);
-                } catch (IOException e) {
-                    System.err.println("Error sending GetBalance response: " + e.getMessage());
-                }
             return;
         }
         if (payload.startsWith("NewTransaction=")) {
@@ -757,6 +755,22 @@ public class DepChainMember implements DeliveryListener{
 
     public Block getLastExecutedBlock() {
         return lastExecutedBlock;
+    }
+
+    private void sendBalanceResponse(GetBalance request, long balance, int senderPort) {
+        GetBalance response = new GetBalance(
+            request.getAddress(),
+            request.getCoin(),
+            null,
+            balance,
+            request.getSequenceNumber()
+        );
+        String responseJson = "GetBalanceResponse=" + GsonUtils.GSON.toJson(response);
+        try {
+            networkLayerLib.alpSend(responseJson, "localhost", senderPort);
+        } catch (IOException e) {
+            System.err.println("Error sending GetBalance response: " + e.getMessage());
+        }
     }
 
 }
