@@ -1,13 +1,30 @@
 package util;
 import consensus.QCManager;
 import model.Message;
-import model.Node;
 import model.QC;
 import blockchain.Transaction;
 import java.util.List;
 
 public class DepChainUtil {
     private final QCManager qcManager;
+
+    public static class MaxQCInfo {
+        private final QC qc;
+        private final int senderPort;
+
+        public MaxQCInfo(QC qc, int senderPort) {
+            this.qc = qc;
+            this.senderPort = senderPort;
+        }
+
+        public QC getQC() {
+            return qc;
+        }
+
+        public int getSenderPort() {
+            return senderPort;
+        }
+    }
 
     public DepChainUtil(QCManager qcManager) {
         this.qcManager = qcManager;

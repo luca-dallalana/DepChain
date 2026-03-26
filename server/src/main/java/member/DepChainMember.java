@@ -3,6 +3,7 @@ package member;
 import java.io.IOException;
 import java.net.DatagramSocket;
 import java.util.Map;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -26,6 +27,7 @@ import network.GsonUtils;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
 import util.DepChainUtil;
+import util.DepChainUtil.MaxQCInfo;
 import org.hyperledger.besu.datatypes.Address;
 import blockchain.Account;
 
@@ -295,11 +297,16 @@ public class DepChainMember implements DeliveryListener{
     }
 
     private void handlePrepare(){
-        QC maxQC = getMaxQC();  // Read new-view votes first
+        MaxQCInfo maxQCInfo = getMaxQCInfo();
+        if (maxQCInfo == null) {
+            System.err.println("No maxQC available to prepare proposal");
+            return;
+        }
+        QC maxQC = maxQCInfo.getQC();
         
-        if (maxQC.viewNumber > prepareQC.viewNumber) {
+        if (prepareQC != null && maxQC.viewNumber > prepareQC.viewNumber) {
             System.out.println("Received a maxQC bigger then my prepareQC" );
-            sendCatchUpRequest(maxQC.blockHash);
+            sendCatchUpRequest(maxQC.blockHash, maxQCInfo.getSenderPort());
         }
 
         // Clear new-view votes to prevent multiple calls to handlePrepare
@@ -307,7 +314,7 @@ public class DepChainMember implements DeliveryListener{
         try {
             Block maxQCBlock = blockStore.getBlockByHash(maxQC.blockHash);//FIXME this could go wrong if leader doesn't have the block
 
-            if (maxQCBlock == null) { //FIXME this is for testing but its a real issue to fix
+            if (maxQCBlock == null) { //FIXME this is for testing but its a real issue to fix, maybe propose new view ? or wait for the catch up ?
                 System.err.println("MaxQC block not found in block store, -- ERROR --");
                 return;
             }
@@ -382,7 +389,7 @@ public class DepChainMember implements DeliveryListener{
             
             if (matchResult == 2) {
                 System.out.println("Received higher view prepare message, updating view to " + m.viewNumber);
-                sendCatchUpRequest(m.justify.blockHash);
+                sendCatchUpRequest(m.justify.blockHash, m.senderPort);
                 curView = m.viewNumber; // Update to higher view
             }
 
@@ -457,7 +464,7 @@ public class DepChainMember implements DeliveryListener{
 
             if (matchResult == 2) {
                 System.out.println("Received higher prepare message, updating view to " + m.viewNumber);
-                sendCatchUpRequest(m.justify.blockHash);
+                sendCatchUpRequest(m.justify.blockHash, m.senderPort);
                 curView = m.viewNumber; // Update to higher view
             }
 
@@ -529,7 +536,7 @@ public class DepChainMember implements DeliveryListener{
 
             if (matchResult == 2) {
                 System.out.println("Received higher view pre-commit message, updating view to " + m.viewNumber);
-                sendCatchUpRequest(m.justify.blockHash);
+                sendCatchUpRequest(m.justify.blockHash, m.senderPort);
                 curView = m.viewNumber; // Update to higher view
             }
             startTimeout();
@@ -592,7 +599,7 @@ public class DepChainMember implements DeliveryListener{
 
         if (matchResult == 2) {
             System.out.println("Received higher view commit message, updating view to " + m.viewNumber);
-            sendCatchUpRequest(m.justify.blockHash);
+            sendCatchUpRequest(m.justify.blockHash, m.senderPort);
             curView = m.viewNumber; // Update to higher view
         }
 
@@ -609,17 +616,22 @@ public class DepChainMember implements DeliveryListener{
         }
     }
 
-    private QC getMaxQC() { //maybe put this in utils
+    private MaxQCInfo getMaxQCInfo() {
         List<Message> msgs = qcManager.getVotes("new-view", curView);
         QC maxqc = null;
+        int senderPort = -1;
         for (Message m : msgs) {
             if (m != null && m.justify != null) {
                 if (maxqc == null || m.justify.viewNumber > maxqc.viewNumber) {
                     maxqc = m.justify;
+                    senderPort = m.senderPort;
                 }
             }
         }
-        return maxqc;
+        if (maxqc == null) {
+            return null;
+        }
+        return new MaxQCInfo(maxqc, senderPort);
     }
 
     private boolean cameFromLeader(Message m, int viewNumber) {
@@ -670,42 +682,10 @@ public class DepChainMember implements DeliveryListener{
         }
         startTimeout(); // restart for new-view phase
     }
-    /*
-    private void executeNode(Node node) {
-        List<Node> cmdToExecute = nodeTree.getNodesUntil(node, lastExecutedHeight);
-        
-        lastExecutedHeight = node.height;
+    
 
-        for (int i = cmdToExecute.size() - 1; i >= 0; i--) { // Execute from lowest height to highest
-            Node n = cmdToExecute.get(i);
-            if (n.cmd.getCommand().equals("NO-OP")) {
-                System.out.println("Executed NO-OP at height " + n.height);
-                try {
-                    Thread.sleep(3000); // FIXME this is not perfect
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            } else {
-                if (memberConfig.isDuplicateRequest(n.cmd)) {
-                    System.out.println("Skipping duplicate command at height " + n.height + ": " + n.cmd.getCommand());
-                    continue;
-                }
-                memberConfig.setLastSequenceForClient(n.cmd.getPort(), n.cmd.getSeq());
-                System.out.println("Executed command at height " + n.height + ": " + n.cmd.getCommand() + " sending back to client " + n.cmd.getPort());
-                //memberConfig.addToAppState(n.cmd.getCommand());
-                memberConfig.removePendingCommand(n.cmd);
-                //System.out.println("Current app state: " + memberConfig.getAppState());
-                String message = "DECIDED= " + n.cmd.getCommand();
-                try {
-                    networkLayerLib.alpSend(message, "localhost", n.cmd.getPort());
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-    }
-    */
-    private void sendCatchUpRequest(String receivedBlockHash) {
+
+    private void sendCatchUpRequest(String receivedBlockHash, int fromPort) {
         String message = "CATCH-UP= "; // we send the whole but only need the height of the lockedQC block to verify
         CatchUp m = new CatchUp();
         m.viewNumber = curView;
@@ -716,7 +696,7 @@ public class DepChainMember implements DeliveryListener{
         message += json;
         
         try {
-            networkLayerLib.alpSend(message, "localhost", m.senderPort);
+            networkLayerLib.alpSend(message, "localhost", fromPort);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -724,19 +704,34 @@ public class DepChainMember implements DeliveryListener{
     
     private void handleCatchUpRequest(CatchUp msg){
         System.out.println("Received catch-up message with lockedQC: " + msg.lockedQC + " from sender " + msg.senderPort);
+        if (msg == null || msg.receivedBlockHash == null || msg.receivedBlockHash.isBlank()) {
+            System.err.println("Invalid catch-up request");
+            return;
+        }
         
         if (msg.lockedQC == null || !qcManager.verifyQC(msg.lockedQC)) {
             System.err.println("Invalid QC in catch-up message");
             return;
         }
-        List<Block> blocksToCatchUp = blockStore.getBlocksUntil(msg.receivedBlockHash, msg.lockedQC.blockHash);
-       
-        String message = "CATCH-UP_RESPONSE= ";
-
+        
         CatchUp response = new CatchUp();
         response.viewNumber = curView;
-        response.blockList = blocksToCatchUp;
         response.senderPort = memberConfig.getID() + 3000;
+        
+        List<List<Transaction>> transactionList = new java.util.ArrayList<>();
+        List<String> blockHashList = new java.util.ArrayList<>();
+        
+        List<Block> blocksToCatchUp = blockStore.getBlocksUntil(msg.receivedBlockHash, msg.lockedQC.blockHash);
+        Collections.reverse(blocksToCatchUp);
+
+        for (Block b : blocksToCatchUp) {
+            transactionList.add(b.transactions);
+            blockHashList.add(b.blockHash);
+        }
+        response.transactionList = transactionList;
+        response.blockHashList = blockHashList;
+
+        String message = "CATCH-UP_RESPONSE= ";
 
         String json = GsonUtils.GSON.toJson(response);
         message += json;
@@ -750,28 +745,49 @@ public class DepChainMember implements DeliveryListener{
     }
 
     private void handleCatchUpResponse(CatchUp msg){
-        List<Block> blockList = msg.blockList;
-        for (Block b : blockList) {
-            try {
-                if (blockStore.getBlockByHash(b.depHash()) == null) {
-                    System.out.println("Storing catch-up block at height " + b.blockNumber + ": " + b.blockHash);
-                    blockStore.storeBlock(b);
-                }
-            } catch (Exception e) {
-                System.out.println("Error storing catch-up block: " + e.getMessage());
-            }
+        if (msg == null || lockedQC == null) {
+            System.err.println("Invalid catch-up response");
+            return;
         }
 
-        if (!blockList.isEmpty()) {
-            Block latestBlock = blockList.get(0);
-            this.lastExecutedBlock = BlockchainMember.executeBlock(latestBlock, blockStore, lastExecutedBlock);
-            System.out.println("Caught up to block height " + lastExecutedBlock.blockNumber);
+        List<List<Transaction>> transactionList = msg.transactionList;
+        List<String> blockHashList = msg.blockHashList;
+        if (transactionList == null || blockHashList == null || transactionList.size() != blockHashList.size()) {
+            System.err.println("Invalid catch-up response payload");
+            return;
+        }
+        String parentHash = lockedQC.blockHash;
 
-            for (Transaction tx : latestBlock.transactions) {
-                if (tx.senderPort >= 4000) {
-                    memberConfig.setLastSequenceForClient(tx.senderPort, tx.nonce_count);
-                    memberConfig.removePendingTransaction(tx);
+        for (int i = 0; i < transactionList.size(); i++) {
+            try {
+                List<Transaction> transactions = transactionList.get(i);
+                String expectedHash = blockHashList.get(i);
+                if (expectedHash == null || expectedHash.isBlank()) {
+                    System.err.println("Invalid block hash in catch-up response");
+                    return;
                 }
+
+                Block parentBlock = blockStore.getBlockByHash(parentHash);
+                if (parentBlock == null) {
+                    System.err.println("Missing parent block while applying catch-up response");
+                    return;
+                }
+                Block proposedBlock = BlockchainMember.buildBlock(parentBlock, transactions);
+                
+                if (!proposedBlock.blockHash.equals(expectedHash)) {
+                    System.err.println("Proposed block hash does not match block hash in catch-up response");
+                    return;
+                }
+
+                if (blockStore.getBlockByHash(proposedBlock.depHash()) == null) {
+                    System.out.println("Storing catch-up block at height " + proposedBlock.blockNumber + ": " + proposedBlock.blockHash);
+                    blockStore.storeBlock(proposedBlock);
+                }
+
+                parentHash = proposedBlock.blockHash;
+
+            } catch (Exception e) {
+                System.out.println("Error processing catch-up block: " + e.getMessage());
             }
         }
     }

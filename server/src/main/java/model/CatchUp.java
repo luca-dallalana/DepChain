@@ -1,12 +1,13 @@
 package model;
 
-import blockchain.Block;
+import blockchain.Transaction;
 import java.util.List;
 
 public class CatchUp {
-    public int         viewNumber;
-    public QC          lockedQC;
-    public String      receivedBlockHash; // the block hash that the sender of the catch-up message is currently at (the one he sent me in justify)
-    public List<Block> blockList;
-    public int         senderPort;
+    public int                     viewNumber;
+    public QC                      lockedQC;
+    public String                  receivedBlockHash;
+    public List<List<Transaction>> transactionList;
+    public List<String>            blockHashList;
+    public int                     senderPort;
 }
