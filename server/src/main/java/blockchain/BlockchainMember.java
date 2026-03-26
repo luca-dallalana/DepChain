@@ -239,67 +239,69 @@ public class BlockchainMember {
 
         // Step 2: Execute each transaction
         for (Transaction tx : transactions) {
-            if (tx.to == null) throw new RuntimeException("Contract deployment must be done in genesis setup, not via computeState()");
+            try {
+                if (tx.to == null) throw new RuntimeException("Contract deployment must be done in genesis setup, not via computeState()");
 
-            // TODO: Signature verification requires public key recovery or address->pubkey mapping
-            // if (tx.signature != null && !verifySignature(tx)) throw new RuntimeException("Invalid signature");
+                MutableAccount senderAccount = (MutableAccount) evm.world.get(tx.from);
+                if (senderAccount == null) throw new RuntimeException("Sender account does not exist");
+                if (tx.getGasPrice() <= 0 || tx.getGasLimit() <= 0) throw new RuntimeException("Gas price and limit must be positive");
+                if (senderAccount.getNonce() != tx.getNonce()) throw new RuntimeException("Invalid nonce");
 
-            MutableAccount senderAccount = (MutableAccount) evm.world.get(tx.from);
-            if (senderAccount == null) throw new RuntimeException("Sender account does not exist");
-            if (tx.getGasPrice() <= 0 || tx.getGasLimit() <= 0) throw new RuntimeException("Gas price and limit must be positive");
-            if (senderAccount.getNonce() != tx.getNonce()) throw new RuntimeException("Invalid nonce");
+                long maxCost = tx.getValue() + (tx.getGasPrice() * tx.getGasLimit());
+                if (senderAccount.getBalance().toLong() < maxCost) throw new RuntimeException("Insufficient balance");
 
-            long maxCost = tx.getValue() + (tx.getGasPrice() * tx.getGasLimit());
-            if (senderAccount.getBalance().toLong() < maxCost) throw new RuntimeException("Insufficient balance");
+                boolean isNativeTransfer = (tx.getData() == null || tx.getData().length == 0);
+                long gasUsed;
 
-            boolean isNativeTransfer = (tx.getData() == null || tx.getData().length == 0);
-            long gasUsed;
+                if (isNativeTransfer) {
+                    MutableAccount recipientAccount = (MutableAccount) evm.world.get(tx.to);
+                    if (recipientAccount == null) {
+                        evm.createAccount(tx.to, Wei.ZERO);
+                        recipientAccount = (MutableAccount) evm.world.get(tx.to);
+                        trackedAddresses.add(tx.to);
+                    }
 
-            if (isNativeTransfer) {
-                MutableAccount recipientAccount = (MutableAccount) evm.world.get(tx.to);
-                if (recipientAccount == null) {
-                    evm.createAccount(tx.to, Wei.ZERO);
-                    recipientAccount = (MutableAccount) evm.world.get(tx.to);
-                    trackedAddresses.add(tx.to);
-                }
+                    if (tx.getValue() > 0) {
+                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getValue())));
+                        recipientAccount.setBalance(recipientAccount.getBalance().add(Wei.of(tx.getValue())));
+                    }
 
-                if (tx.getValue() > 0) {
-                    senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getValue())));
-                    recipientAccount.setBalance(recipientAccount.getBalance().add(Wei.of(tx.getValue())));
-                }
-
-                senderAccount.incrementNonce();
-                gasUsed = 21000; // Fixed gas cost for native transfer FIXME: talvez mudar
-                tx.executionSuccess = true;
-
-            } else {
-                EVMHelper.ExecutionResult result = evm.executeCall(tx.from, tx.to, Bytes.wrap(tx.getData()));
-                gasUsed = result.getGasUsed();
-
-                if (gasUsed > tx.getGasLimit()) {
-                    senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));
                     senderAccount.incrementNonce();
-                    trackedAddresses.add(tx.from);
-                    System.out.println("Transaction failed due to lack of gas");
-                    tx.executionSuccess = false;
-                    continue;
+                    gasUsed = 21000; // Fixed gas cost for native transfer FIXME: talvez mudar
+                    tx.executionSuccess = true;
+
+                } else {
+                    EVMHelper.ExecutionResult result = evm.executeCall(tx.from, tx.to, Bytes.wrap(tx.getData()));
+                    gasUsed = result.getGasUsed();
+
+                    if (gasUsed > tx.getGasLimit()) {
+                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));
+                        senderAccount.incrementNonce();
+                        trackedAddresses.add(tx.from);
+                        System.out.println("Transaction failed due to lack of gas");
+                        tx.executionSuccess = false;
+                        continue;
+                    }
+
+                    if (!result.isSuccess()) {
+                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
+                        senderAccount.incrementNonce();
+                        trackedAddresses.add(tx.from);
+                        System.out.println("Contract call failed");
+                        tx.executionSuccess = false;
+                        continue;
+                    }
+                    senderAccount.incrementNonce();
+                    tx.executionSuccess = true;
                 }
 
-                if (!result.isSuccess()) {
-                    senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
-                    senderAccount.incrementNonce();
-                    trackedAddresses.add(tx.from);
-                    System.out.println("Contract call failed");
-                    tx.executionSuccess = false;
-                    continue;
-                }
-                senderAccount.incrementNonce();
-                tx.executionSuccess = true;
+                senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
+                trackedAddresses.add(tx.from);
+                trackedAddresses.add(tx.to);
+            } catch (RuntimeException e) {
+                System.err.println("Transaction validation failed: " + e.getMessage() + " (nonce=" + tx.nonce_count + ", from=" + tx.from + ")");
+                tx.executionSuccess = false;
             }
-
-            senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
-            trackedAddresses.add(tx.from);
-            trackedAddresses.add(tx.to);
         }
 
         // Step 3: Extract final state from EVM

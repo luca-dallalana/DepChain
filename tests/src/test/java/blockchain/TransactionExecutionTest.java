@@ -7,6 +7,7 @@ import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
@@ -160,14 +161,14 @@ public class TransactionExecutionTest {
         );
         transactions.add(tx);
 
-        // Execute should throw exception
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-            BlockchainMember.computeState(evm, transactions, genesisState);
-        });
+        // Execute should not throw exception, but mark transaction as failed
+        WorldState resultState = BlockchainMember.computeState(evm, transactions, genesisState);
 
-        assertTrue(exception.getMessage().contains("Invalid nonce"),
-            "Exception should mention invalid nonce");
-        System.out.println("Exception caught: " + exception.getMessage());
+        // Verify transaction was marked as failed
+        assertNotNull(resultState, "State should be returned even with invalid transaction");
+        assertFalse(tx.getExecutionSuccess(), "Transaction with invalid nonce should have executionSuccess = false");
+
+        System.out.println("Transaction marked as failed with executionSuccess = false");
         System.out.println("Test PASSED\n");
     }
 
@@ -194,14 +195,14 @@ public class TransactionExecutionTest {
         );
         transactions.add(tx);
 
-        // Execute should throw exception
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-            BlockchainMember.computeState(evm, transactions, genesisState);
-        });
+        // Execute should not throw exception, but mark transaction as failed
+        WorldState resultState = BlockchainMember.computeState(evm, transactions, genesisState);
 
-        assertTrue(exception.getMessage().contains("Insufficient balance"),
-            "Exception should mention insufficient balance");
-        System.out.println("Exception caught: " + exception.getMessage());
+        // Verify transaction was marked as failed
+        assertNotNull(resultState, "State should be returned even with invalid transaction");
+        assertFalse(tx.getExecutionSuccess(), "Transaction with insufficient balance should have executionSuccess = false");
+
+        System.out.println("Transaction marked as failed with executionSuccess = false");
         System.out.println("Test PASSED\n");
     }
 
