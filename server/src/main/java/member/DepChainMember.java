@@ -48,7 +48,7 @@ public class DepChainMember implements DeliveryListener{
     private Block lastExecutedBlock; // Track last executed block
     private int timeoutCount = 1; // Track number of timeouts for exponential backoff
 
-    private static final long PHASE_TIMEOUT_MS = 3000;  // 3 seconds for testing
+    private static final long PHASE_TIMEOUT_MS = 8000;  // FIXME check this
     private Thread timeoutThread;
 
     public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
@@ -305,8 +305,6 @@ public class DepChainMember implements DeliveryListener{
         // Clear new-view votes to prevent multiple calls to handlePrepare
         qcManager.clearVotesForTypeView("new-view", curView);
         try {
-            Block curProposal;
-
             Block maxQCBlock = blockStore.getBlockByHash(maxQC.blockHash);//FIXME this could go wrong if leader doesn't have the block
 
             if (maxQCBlock == null) { //FIXME this is for testing but its a real issue to fix
@@ -314,20 +312,21 @@ public class DepChainMember implements DeliveryListener{
                 return;
             }
 
-            if (memberConfig.getPendingCommands().isEmpty()) { // FIXME: fica dificil propor no-op sem no-op
-                System.out.println("No pending client commands, proposing NO-OP");
-                curProposal = BlockchainMember.buildBlock(maxQCBlock, memberConfig.getPendingTransactions());
-            } else {
-                System.out.println("Processing pending client command " + memberConfig.getPendingCommands());
-                curProposal = BlockchainMember.buildBlock(maxQCBlock, memberConfig.getPendingTransactions());
-            }
+            new Thread(() -> { //this is done so the thread that is listening can keep receiving messages while we do the block building that can be blocking for a period of time
+                try {
+                    Block curProposal = BlockchainMember.buildBlockForProposal(maxQCBlock, memberConfig.getPendingTransactions());
+            
+                    this.currentProposal = curProposal; // Store for QC formation
 
-            this.currentProposal = curProposal; // Store for QC formation
-
-            Message prepareMsg = util.voteMsg("prepare", curProposal.transactions, curProposal.blockHash, maxQC, curView);
-            prepareMsg.senderPort = memberConfig.getID() + 3000;
-            qcManager.addVote(prepareMsg);
-            broadcast(prepareMsg);
+                    Message prepareMsg = util.voteMsg("prepare", curProposal.transactions, curProposal.blockHash, maxQC, curView);
+                    prepareMsg.senderPort = memberConfig.getID() + 3000;
+                    qcManager.addVote(prepareMsg);
+                    broadcast(prepareMsg);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
+           return;
         } catch (Exception e) {
             e.printStackTrace();
         }

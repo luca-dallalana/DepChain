@@ -20,6 +20,10 @@ import blockchain.evm.EVMHelper;
 
 public class BlockchainMember {
 
+    private static final long BLOCK_GAS_LIMIT = 210000;
+    private static final long BLOCK_BUILD_TIMEOUT_MS = 5000;
+    private static final long BUILD_POLL_INTERVAL_MS = 100;
+
     // Consensus calls this when a block is decided
     public static Block executeBlock(Block block, BlockStore blockStore, Block lastExecutedBlock) {
         if (block == null) throw new IllegalArgumentException("Cannot execute null block");
@@ -59,6 +63,14 @@ public class BlockchainMember {
     // Consensus calls this to get the next block to propose
     public static Block buildBlock(Block parent, List<Transaction> pendingTxs) throws Exception {
         List<Transaction> orderedTxs = orderTransactionsForBlock(pendingTxs);
+        EVMHelper evm = new EVMHelper();
+        WorldState newState = computeState(evm, orderedTxs, parent.state);
+        return Block.createLeaf(parent, orderedTxs, newState);
+    }
+
+    // Leader path: wait up to timeout, but stop early when block gas cap is reached.
+    public static Block buildBlockForProposal(Block parent, List<Transaction> pendingTxs) throws Exception {
+        List<Transaction> orderedTxs = waitAndOrderTransactionsForBlock(pendingTxs);
         EVMHelper evm = new EVMHelper();
         WorldState newState = computeState(evm, orderedTxs, parent.state);
         return Block.createLeaf(parent, orderedTxs, newState);
@@ -120,8 +132,9 @@ public class BlockchainMember {
         }
 
         List<Transaction> ordered = new ArrayList<>();
+        long totalGas = 0;
 
-        while (!bySender.isEmpty() && ordered.size() < 10) { //FIXME: limit block size to 10 transactions for simplicity
+        while (!bySender.isEmpty()) {
             String bestSender = null;
             long highestGasPrice = -1;
 
@@ -134,16 +147,56 @@ public class BlockchainMember {
             }
 
             if (bestSender != null) {
-                Transaction tx = bySender.get(bestSender).poll();
+                Transaction tx = bySender.get(bestSender).peek();
+                long txGas = tx.getGasLimit();
+
+                if (!ordered.isEmpty() && totalGas + txGas > BLOCK_GAS_LIMIT) {
+                    break;
+                }
+
+                tx = bySender.get(bestSender).poll();
                 ordered.add(tx);
+                totalGas += txGas;
 
                 if (bySender.get(bestSender).isEmpty()) {
                     bySender.remove(bestSender);
+                }
+
+                if (totalGas >= BLOCK_GAS_LIMIT) {
+                    break;
                 }
             }
         }
 
         return ordered;
+    }
+
+    private static List<Transaction> waitAndOrderTransactionsForBlock(List<Transaction> pendingTxs) {
+        long deadline = System.currentTimeMillis() + BLOCK_BUILD_TIMEOUT_MS;
+
+        while (System.currentTimeMillis() < deadline) {
+            List<Transaction> candidate = orderTransactionsForBlock(new ArrayList<>(pendingTxs));
+            if (totalGas(candidate) >= BLOCK_GAS_LIMIT) {
+                return candidate;
+            }
+
+            try {
+                Thread.sleep(BUILD_POLL_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        return orderTransactionsForBlock(new ArrayList<>(pendingTxs));
+    }
+
+    private static long totalGas(List<Transaction> transactions) {
+        long total = 0;
+        for (Transaction tx : transactions) {
+            total += tx.getGasLimit();
+        }
+        return total;
     }
 
     public static Map<String, String> extractStoragePublic(EVMHelper evm, Address contractAddress) {
