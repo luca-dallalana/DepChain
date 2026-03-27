@@ -39,6 +39,21 @@ public class BlockStore {
         return firstBlock;
     }
 
+    private boolean isLockedSubtreeBlock(Block block, Block lockedBlock) {
+        String blockHash = block.blockHash;
+
+        return blockHash.equals(lockedBlock.blockHash) || extendsFrom(lockedBlock, blockHash);
+    }
+
+    public int pruneToLockedSubtree(String lockedBlockHash) {
+        int sizeBefore = blockStore.size();
+        Block lockedBlock = getBlockByHash(lockedBlockHash);
+        
+        blockStore.entrySet().removeIf(entry -> !isLockedSubtreeBlock(entry.getValue(), lockedBlock));
+
+        return sizeBefore - blockStore.size();
+    }
+
     // Check if descendant extends from ancestor in the block tree.
     public boolean extendsFrom(Block descendant, String ancestorHash) {
         try {  
@@ -56,7 +71,7 @@ public class BlockStore {
                 }
 
                 // Check if parent matches ancestor
-                String parentHash = parent.depHash();
+                String parentHash = parent.blockHash;
                 if (parentHash.equals(ancestorHash)) {
                     return true;
                 }

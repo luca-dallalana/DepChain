@@ -500,6 +500,12 @@ public class DepChainMember implements DeliveryListener{
         try {
             lockedQC = qcManager.formQC("pre-commit", curView, currentProposal.blockHash);
 
+            int prunedCount = blockStore.pruneToLockedSubtree(lockedQC.blockHash);
+            
+            if (prunedCount > 0) {
+                System.out.println("Pruned " + prunedCount + " blocks that were not in the subtree of the new locked QC");
+            }
+
             Message commitMsg = util.voteMsg("commit", null, currentProposal.blockHash, lockedQC, curView);
             commitMsg.senderPort = memberConfig.getID() + 3000;
             qcManager.addVote(commitMsg);
@@ -541,8 +547,15 @@ public class DepChainMember implements DeliveryListener{
             }
             startTimeout();
 
-            lockedQC = m.justify;
+            QC newLockedQC = m.justify;
+            lockedQC = newLockedQC; // Update lockedQC
 
+            int prunedCount = blockStore.pruneToLockedSubtree(newLockedQC.blockHash);
+            
+            if (prunedCount > 0) {
+                System.out.println("Pruned " + prunedCount + " blocks that were not in the subtree of the new locked QC");
+            }
+          
             Message voteMsg = util.voteMsg("commit", null, m.justify.blockHash, m.justify, curView);
             voteMsg.senderPort = memberConfig.getID() + 3000;
 
