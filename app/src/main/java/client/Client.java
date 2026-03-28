@@ -102,7 +102,6 @@ public class Client implements DeliveryListener{
                     Long istGasPrice = readLong(scanner, "Enter gasPrice: ");
                     Address senderAddress = config.getAccountAddress(config.getID());
                     Bytes transferData = ABIEncoder.encodeTransfer(recipientAddress, BigInteger.valueOf(istValue));
-                    sequenceNumber++;
 
                     Transaction istCoinTransferRequest = new Transaction(
                         config.getPort(),
@@ -116,6 +115,7 @@ public class Client implements DeliveryListener{
                         null
                     );
 
+                    sequenceNumber++;
 
                     try {
                         sendTransaction(istCoinTransferRequest);

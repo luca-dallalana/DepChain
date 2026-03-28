@@ -123,7 +123,7 @@ public class Block {
 
             // 4. Deploy ISTCoin contract manually (genesis-only setup, admin deploys)
             Address istAddress = Address.fromHexString(IST_COIN_ADDRESS);
-            Bytes istConstructorParams = ABIEncoder.encodeISTCoinConstructor(adminAddress);
+            Bytes istConstructorParams = ABIEncoder.encodeISTCoinConstructor(client0HexAddress, client1HexAddress);
             Bytes istDeploymentCode = Bytes.concatenate(
                 Bytes.fromHexString(istCoinBytecode),
                 istConstructorParams

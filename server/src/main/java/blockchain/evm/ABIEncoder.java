@@ -26,9 +26,12 @@ public class ABIEncoder {
     }
 
 
-    public static Bytes encodeISTCoinConstructor(Address initialHolder) {
+    public static Bytes encodeISTCoinConstructor(Address initialHolderA, Address initialHolderB) {
         String encoded = FunctionEncoder.encodeConstructor(
-            Arrays.asList(toWeb3jAddress(initialHolder))
+            Arrays.asList(
+                toWeb3jAddress(initialHolderA),
+                toWeb3jAddress(initialHolderB)
+            )
         );
         return Bytes.fromHexString(encoded);
     }

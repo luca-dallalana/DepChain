@@ -23,6 +23,7 @@ public class ISTCoinTest {
 
     // Expected values
     private static final BigInteger TOTAL_SUPPLY = new BigInteger("10000000000"); // 100M * 100 (decimals=2)
+    private static final BigInteger HALF_SUPPLY = TOTAL_SUPPLY.divide(BigInteger.valueOf(2));
 
     @Test
     public void testISTCoin() {
@@ -37,8 +38,8 @@ public class ISTCoinTest {
         evm.createAccount(CHARLIE, Wei.fromEth(1000));
         System.out.println("Accounts created: DEPLOYER, ALICE, BOB, CHARLIE");
 
-        // Deploy ISTCoin with Alice as initial holder
-        Bytes istCoinConstructorParams = ABIEncoder.encodeISTCoinConstructor(ALICE);
+        // Deploy ISTCoin with Alice and Bob as initial holders (50/50 split)
+        Bytes istCoinConstructorParams = ABIEncoder.encodeISTCoinConstructor(ALICE, BOB);
         Bytes istCoinDeploymentCode = Bytes.concatenate(
             Bytes.fromHexString(IST_COIN_BYTECODE),
             istCoinConstructorParams
@@ -61,8 +62,15 @@ public class ISTCoinTest {
         evm.executeCall(DEPLOYER, IST_COIN_ADDRESS, callData);
         BigInteger aliceBalance = evm.extractUint256FromReturnData();
         System.out.println("Alice's Balance: " + aliceBalance);
-        System.out.println("Expected: " + TOTAL_SUPPLY);
-        System.out.println("Match: " + aliceBalance.equals(TOTAL_SUPPLY));
+        System.out.println("Expected: " + HALF_SUPPLY);
+        System.out.println("Match: " + aliceBalance.equals(HALF_SUPPLY));
+
+        callData = ABIEncoder.encodeBalanceOf(BOB);
+        evm.executeCall(DEPLOYER, IST_COIN_ADDRESS, callData);
+        BigInteger bobInitialBalance = evm.extractUint256FromReturnData();
+        System.out.println("Bob's Initial Balance: " + bobInitialBalance);
+        System.out.println("Expected: " + HALF_SUPPLY);
+        System.out.println("Match: " + bobInitialBalance.equals(HALF_SUPPLY));
         evm.printLastTraceLines(5, "Test 1 - balanceOf (RETURN)");
         System.out.println();
 

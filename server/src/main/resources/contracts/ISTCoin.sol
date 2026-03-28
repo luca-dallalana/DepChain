@@ -6,6 +6,7 @@ contract ISTCoin {
     string public constant symbol = "IST";
     uint8 public constant decimals = 2;
     uint256 public constant totalSupply = 10_000_000_000; // 100M * 100 (decimals=2)
+    uint256 private constant INITIAL_ALLOCATION = totalSupply / 2;
 
     mapping(address => uint256) private balances;
     mapping(address => mapping(address => uint256)) private allowances;
@@ -13,9 +14,11 @@ contract ISTCoin {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
-    constructor(address initialHolder) {
-        balances[initialHolder] = totalSupply;
-        emit Transfer(address(0), initialHolder, totalSupply);
+    constructor(address initialHolderA, address initialHolderB) {
+        balances[initialHolderA] = INITIAL_ALLOCATION;
+        balances[initialHolderB] = INITIAL_ALLOCATION;
+        emit Transfer(address(0), initialHolderA, INITIAL_ALLOCATION);
+        emit Transfer(address(0), initialHolderB, INITIAL_ALLOCATION);
     }
 
     function balanceOf(address account) external view returns (uint256) {
