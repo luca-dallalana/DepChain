@@ -70,8 +70,8 @@ public class Client implements DeliveryListener{
                     // Native DepCoin transfer
                     Address toAddress = readAddressForClient(scanner, "Enter recipient client ID: ");
                     Long transferValue = readLong(scanner, "Enter value: ");
-                    Long gasLimit = readLong(scanner, "Enter gasLimit: ");
-                    Long gasPrice = readLong(scanner, "Enter gasPrice: ");
+                    Long gasLimit = 21000L; // Fixed gas limit for native transfer
+                    Long gasPrice = 1L; // Fixed gas price for native transfer
                     Address fromAddress = config.getAccountAddress(config.getID());
 
                     Transaction DepCoinTransferRequest = new Transaction(
