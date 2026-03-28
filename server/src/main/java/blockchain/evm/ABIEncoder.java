@@ -52,6 +52,20 @@ public class ABIEncoder {
         ));
     }
 
+    public static Bytes encodeIncreaseAllowance(Address spender, BigInteger addedValue) {
+        return encodeFunctionCall("increaseAllowance", Arrays.asList(
+            toWeb3jAddress(spender),
+            new Uint256(addedValue)
+        ));
+    }
+
+    public static Bytes encodeDecreaseAllowance(Address spender, BigInteger subtractedValue) {
+        return encodeFunctionCall("decreaseAllowance", Arrays.asList(
+            toWeb3jAddress(spender),
+            new Uint256(subtractedValue)
+        ));
+    }
+
     public static Bytes encodeTransferFrom(Address from, Address to, BigInteger amount) {
         return encodeFunctionCall("transferFrom", Arrays.asList(
             toWeb3jAddress(from),

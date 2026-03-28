@@ -50,7 +50,7 @@ public class Client implements DeliveryListener{
         System.out.println("Commands:");
         System.out.println("  0 - DepCoin Transfer (native)");
         System.out.println("  1 - ISTCoin Transfer (contract)");
-        System.out.println("  2 - Approve Allowance");
+        System.out.println("  2 - Change Allowance (+/-)");
         System.out.println("  3 - TransferFrom");
         System.out.println("  4 - Get DepCoin Balance");
         System.out.println("  5 - Get ISTCoin Balance");
@@ -124,27 +124,35 @@ public class Client implements DeliveryListener{
                     }
                     break;
                 case "2":
-                    // Approve allowance on ISTCoin contract
+                    // Change allowance on ISTCoin contract via increase/decrease
                     Address spenderAddress = readAddressForClient(scanner, "Enter spender client ID: ");
-                    Long newAllowance = readLong(scanner, "Enter new allowance value: ");
-                    Long expectedAllowance = readLong(scanner, "Enter expected current allowance: ");
-                    Long approveGasLimit = readLong(scanner, "Enter gasLimit: ");
-                    Long approveGasPrice = readLong(scanner, "Enter gasPrice: ");
+                    String allowanceAction = readAllowanceAction(scanner);
+                    Long allowanceDelta = readLong(scanner, "Enter allowance delta value: ");
+                    Long allowanceGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long allowanceGasPrice = readLong(scanner, "Enter gasPrice: ");
                     Address ownerAddress = config.getAccountAddress(config.getID());
-                    Bytes approveData = ABIEncoder.encodeApprove(
-                        spenderAddress,
-                        BigInteger.valueOf(newAllowance),
-                        BigInteger.valueOf(expectedAllowance)
-                    );
 
-                    Transaction approveRequest = new Transaction(
+                    Bytes allowanceData;
+                    if ("+".equals(allowanceAction)) {
+                        allowanceData = ABIEncoder.encodeIncreaseAllowance(
+                            spenderAddress,
+                            BigInteger.valueOf(allowanceDelta)
+                        );
+                    } else {
+                        allowanceData = ABIEncoder.encodeDecreaseAllowance(
+                            spenderAddress,
+                            BigInteger.valueOf(allowanceDelta)
+                        );
+                    }
+
+                    Transaction allowanceRequest = new Transaction(
                         config.getPort(),
                         ownerAddress,
                         config.getISTCoinContractAddress(),
                         0L,
-                        approveData.toArray(),
-                        approveGasLimit,
-                        approveGasPrice,
+                        allowanceData.toArray(),
+                        allowanceGasLimit,
+                        allowanceGasPrice,
                         sequenceNumber,
                         null
                     );
@@ -152,9 +160,9 @@ public class Client implements DeliveryListener{
                     sequenceNumber++;
 
                     try {
-                        sendTransaction(approveRequest);
+                        sendTransaction(allowanceRequest);
                     } catch (Exception e) {
-                        System.err.println("Error sending approve: " + e.getMessage());
+                        System.err.println("Error sending allowance change: " + e.getMessage());
                     }
                     break;
                 case "3":
@@ -212,7 +220,7 @@ public class Client implements DeliveryListener{
                     sequenceNumber++;
                     break;
                 default:
-                    System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Approve), 3 (TransferFrom), 4 (Get DepCoin Balance), 5 (Get ISTCoin Balance), or 6 (Exit)");
+                    System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Change Allowance), 3 (TransferFrom), 4 (Get DepCoin Balance), 5 (Get ISTCoin Balance), or 6 (Exit)");
             }
         }
     }
@@ -410,6 +418,17 @@ public class Client implements DeliveryListener{
             }
 
             return value;
+        }
+    }
+
+    private String readAllowanceAction(Scanner scanner) {
+        while (true) {
+            System.out.print("Choose allowance action (+ to increase, - to decrease): ");
+            String input = scanner.nextLine().trim();
+            if ("+".equals(input) || "-".equals(input)) {
+                return input;
+            }
+            System.out.println("Invalid action. Use '+' to increase or '-' to decrease.");
         }
     }
 

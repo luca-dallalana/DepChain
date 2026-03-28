@@ -115,8 +115,8 @@ public class Block {
             evm.createAccount(adminAddress, Wei.of(1000000));
 
             // Member EOA accounts (static membership)
-            evm.createAccount(client0HexAddress, Wei.of(100000));
-            evm.createAccount(client1HexAddress, Wei.of(100000));
+            evm.createAccount(client0HexAddress, Wei.of(1000000));
+            evm.createAccount(client1HexAddress, Wei.of(1000000));
 
             // 3. Load contract bytecode
             String istCoinBytecode = BytecodeLoader.loadBytecode("ISTCoin");
