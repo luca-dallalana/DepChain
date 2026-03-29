@@ -15,8 +15,6 @@ public class GenesisBlockTest {
 
     @Test
     public void testGenesisCreation() {
-        System.out.println("=== Genesis Block Creation Test ===\n");
-
         String projectRoot = "..";
 
         // Clean up existing genesis file if it exists
@@ -51,6 +49,7 @@ public class GenesisBlockTest {
         assertTrue(genesis.state.hasAccount(adminAddress), "Admin account should exist");
         blockchain.Account adminAccount = genesis.state.getAccount(adminAddress);
         assertNotNull(adminAccount, "Admin account should not be null");
+        assertTrue(adminAccount.balance > 0, "Admin should have positive DepCoin balance");
 
         // Verify ISTCoin contract address exists
         Address istCoinAddress = Address.fromHexString(Block.IST_COIN_ADDRESS);
@@ -76,6 +75,8 @@ public class GenesisBlockTest {
         assertNotNull(client1Account, "Client1 account should exist");
         assertEquals(0, client0Account.nonce_count, "Client0 should have nonce=0");
         assertEquals(0, client1Account.nonce_count, "Client1 should have nonce=0");
+        assertTrue(client0Account.balance > 0, "Client0 should have positive DepCoin balance");
+        assertTrue(client1Account.balance > 0, "Client1 should have positive DepCoin balance");
 
         // Verify file was created
         File genesisFile = new File(genesisPath);
@@ -85,11 +86,5 @@ public class GenesisBlockTest {
         Block retrievedBlock = blockStore.getBlockByHash(genesis.blockHash);
         assertNotNull(retrievedBlock, "Genesis block should be in BlockStore");
         assertEquals(genesis.blockHash, retrievedBlock.blockHash, "Retrieved block should match genesis");
-
-        System.out.println("\n=== Genesis Block Test Passed ===");
-        System.out.println("Genesis block hash: " + genesis.blockHash);
-        System.out.println("Accounts in genesis state: " + genesis.state.accounts.size());
-        System.out.println("File saved at: " + genesisPath);
-        System.out.println("Block stored in BlockStore: " + (retrievedBlock != null));
     }
 }
