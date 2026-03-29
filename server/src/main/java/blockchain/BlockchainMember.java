@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
-
+import org.apache.tuweni.units.bigints.UInt256;
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
@@ -207,10 +207,9 @@ public class BlockchainMember {
             return storage;
         }
 
-        Map<org.apache.tuweni.units.bigints.UInt256, org.apache.tuweni.units.bigints.UInt256> besuStorage =
-            mutableAccount.getUpdatedStorage();
+        Map<UInt256, UInt256> besuStorage = mutableAccount.getUpdatedStorage();
 
-        for (Map.Entry<org.apache.tuweni.units.bigints.UInt256, org.apache.tuweni.units.bigints.UInt256> entry : besuStorage.entrySet()) {
+        for (Map.Entry<UInt256, UInt256> entry : besuStorage.entrySet()) {
             storage.put("0x" + entry.getKey().toHexString().substring(2),
                        "0x" + entry.getValue().toHexString().substring(2));
         }
@@ -242,10 +241,8 @@ public class BlockchainMember {
                     // Load contract storage
                     if (account.storage != null) {
                         for (Map.Entry<String, String> storageEntry : account.storage.entrySet()) {
-                            org.apache.tuweni.units.bigints.UInt256 key =
-                                org.apache.tuweni.units.bigints.UInt256.fromHexString(storageEntry.getKey());
-                            org.apache.tuweni.units.bigints.UInt256 value =
-                                org.apache.tuweni.units.bigints.UInt256.fromHexString(storageEntry.getValue());
+                            UInt256 key = UInt256.fromHexString(storageEntry.getKey());
+                            UInt256 value = UInt256.fromHexString(storageEntry.getValue());
                             besuAccount.setStorageValue(key, value);
                         }
                     }
