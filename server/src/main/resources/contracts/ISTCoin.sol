@@ -62,17 +62,4 @@ contract ISTCoin {
         emit Approval(msg.sender, spender, newValue);
         return true;
     }
-
-    function increaseAllowance(address spender, uint256 addedValue) external returns (bool) {
-        allowances[msg.sender][spender] += addedValue;
-        emit Approval(msg.sender, spender, allowances[msg.sender][spender]);
-        return true;
-    }
-
-    function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool) {
-        require(allowances[msg.sender][spender] >= subtractedValue, "Insufficient allowance");
-        allowances[msg.sender][spender] -= subtractedValue;
-        emit Approval(msg.sender, spender, allowances[msg.sender][spender]);
-        return true;
-    }
 }

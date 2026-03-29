@@ -12,6 +12,7 @@ import com.google.gson.Gson;
 import blockchain.Block;
 import blockchain.BlockStore;
 import blockchain.BlockchainMember;
+import blockchain.GetAllowance;
 import blockchain.GetBalance;
 import blockchain.Transaction;
 import blockchain.TransactionResponse;
@@ -151,6 +152,54 @@ public class DepChainMember implements DeliveryListener{
                 sendBalanceResponse(request, balance, senderPort);
                 return;
             }
+            return;
+        }
+        if(payload.startsWith("GetAllowance=")){
+            String json = payload.substring("GetAllowance=".length()).trim();
+            GetAllowance request = GsonUtils.GSON.fromJson(json, GetAllowance.class);
+
+            if (senderPort < 4000){
+                System.err.println("GetAllowance request received is not from a client, ignoring");
+                return;
+            }
+
+            if (request.getSignature() == null) {
+                System.err.println("Invalid signature for GetAllowance request in message, ignoring");
+                return;
+            }
+
+            int senderId = senderPort - 4000;
+            String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
+
+            GetAllowance unsignedRequest = new GetAllowance(request.getOwner(), request.getSpender(), request.getCoin(), null, -1, request.getSequenceNumber());
+            byte[] requestBytes = GsonUtils.GSON.toJson(unsignedRequest).getBytes();
+
+            try {
+                if(!CryptoLib.verifySignature(requestBytes, request.getSignature(), PUBLIC_KEY_PATH)){
+                    System.err.println("Invalid signature for GetAllowance request in message, ignoring");
+                    return;
+                }
+            } catch (Exception e) {
+                System.err.println("Error verifying signature for GetAllowance request: " + e.getMessage());
+                return;
+            }
+
+            Address istCoinAddress = Address.fromHexString(Block.IST_COIN_ADDRESS);
+            Account istCoinAccount = lastExecutedBlock.state.getAccount(istCoinAddress);
+
+            String storageKey = GetAllowance.computeAllowanceMappingStorageKey(
+                request.getOwner().toHexString(),
+                request.getSpender().toHexString()
+            );
+
+            String allowanceHex = istCoinAccount.getStorage().get(storageKey);
+
+            long allowance = 0;
+            if (allowanceHex != null && !allowanceHex.equals("0x0")) {
+                allowance = Long.parseLong(allowanceHex.substring(2), 16);
+            }
+
+            sendAllowanceResponse(request, allowance, senderPort);
             return;
         }
         if (payload.startsWith("NewTransaction=")) {
@@ -822,6 +871,23 @@ public class DepChainMember implements DeliveryListener{
             networkLayerLib.alpSend(responseJson, "localhost", senderPort);
         } catch (IOException e) {
             System.err.println("Error sending GetBalance response: " + e.getMessage());
+        }
+    }
+
+    private void sendAllowanceResponse(GetAllowance request, long allowance, int senderPort) {
+        GetAllowance response = new GetAllowance(
+            request.getOwner(),
+            request.getSpender(),
+            request.getCoin(),
+            null,
+            allowance,
+            request.getSequenceNumber()
+        );
+        String responseJson = "GetAllowanceResponse=" + GsonUtils.GSON.toJson(response);
+        try {
+            networkLayerLib.alpSend(responseJson, "localhost", senderPort);
+        } catch (IOException e) {
+            System.err.println("Error sending GetAllowance response: " + e.getMessage());
         }
     }
 

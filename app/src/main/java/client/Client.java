@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 
+import blockchain.GetAllowance;
 import blockchain.GetBalance;
 import blockchain.Transaction;
 import blockchain.TransactionResponse;
@@ -50,11 +51,12 @@ public class Client implements DeliveryListener{
         System.out.println("Commands:");
         System.out.println("  0 - DepCoin Transfer (native)");
         System.out.println("  1 - ISTCoin Transfer (contract)");
-        System.out.println("  2 - Change Allowance (+/-)");
+        System.out.println("  2 - Set Allowance");
         System.out.println("  3 - TransferFrom");
         System.out.println("  4 - Get DepCoin Balance");
         System.out.println("  5 - Get ISTCoin Balance");
-        System.out.println("  6 - Exit");
+        System.out.println("  6 - Get Allowance");
+        System.out.println("  7 - Exit");
         System.out.println("===============================\n");
 
         Scanner scanner = new Scanner(System.in);
@@ -63,7 +65,7 @@ public class Client implements DeliveryListener{
             String input = scanner.nextLine().trim();
             if (input.isEmpty()) continue;
             switch (input) {
-                case "6":
+                case "7":
                     scanner.close();
                     return;
                 case "0":
@@ -124,26 +126,19 @@ public class Client implements DeliveryListener{
                     }
                     break;
                 case "2":
-                    // Change allowance on ISTCoin contract via increase/decrease
+                    // Set allowance on ISTCoin contract via approve
                     Address spenderAddress = readAddressForClient(scanner, "Enter spender client ID: ");
-                    String allowanceAction = readAllowanceAction(scanner);
-                    Long allowanceDelta = readLong(scanner, "Enter allowance delta value: ");
+                    Long newAllowance = readLongAllowZero(scanner, "Enter new allowance value: ");
+                    Long expectedCurrentAllowance = readLongAllowZero(scanner, "Enter expected current allowance value: ");
                     Long allowanceGasLimit = readLong(scanner, "Enter gasLimit: ");
                     Long allowanceGasPrice = readLong(scanner, "Enter gasPrice: ");
                     Address ownerAddress = config.getAccountAddress(config.getID());
 
-                    Bytes allowanceData;
-                    if ("+".equals(allowanceAction)) {
-                        allowanceData = ABIEncoder.encodeIncreaseAllowance(
-                            spenderAddress,
-                            BigInteger.valueOf(allowanceDelta)
-                        );
-                    } else {
-                        allowanceData = ABIEncoder.encodeDecreaseAllowance(
-                            spenderAddress,
-                            BigInteger.valueOf(allowanceDelta)
-                        );
-                    }
+                    Bytes allowanceData = ABIEncoder.encodeApprove(
+                        spenderAddress,
+                        BigInteger.valueOf(newAllowance),
+                        BigInteger.valueOf(expectedCurrentAllowance)
+                    );
 
                     Transaction allowanceRequest = new Transaction(
                         config.getPort(),
@@ -219,8 +214,22 @@ public class Client implements DeliveryListener{
                     }
                     sequenceNumber++;
                     break;
+                case "6":
+                    // Get Allowance (only for ISTCoin - allowances don't exist for native DepCoin)
+                    Address ownerAddressForAllowance = selectAddressFromList(scanner, "Choose owner address to check allowance:");
+                    if (ownerAddressForAllowance == null) {
+                        break;
+                    }
+                    Address spenderAddressForAllowance = readAddressForClient(scanner, "Enter spender client ID: ");
+                    try {
+                        sendGetAllowance(ownerAddressForAllowance, spenderAddressForAllowance, sequenceNumber);
+                    } catch (IOException e) {
+                        System.err.println("Error requesting allowance: " + e.getMessage());
+                    }
+                    sequenceNumber++;
+                    break;
                 default:
-                    System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Change Allowance), 3 (TransferFrom), 4 (Get DepCoin Balance), 5 (Get ISTCoin Balance), or 6 (Exit)");
+                    System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Set Allowance), 3 (TransferFrom), 4 (Get DepCoin Balance), 5 (Get ISTCoin Balance), 6 (Get Allowance), or 7 (Exit)");
             }
         }
     }
@@ -258,6 +267,23 @@ public class Client implements DeliveryListener{
         sendMessage(packet);
     }
 
+    private void sendGetAllowance(Address owner, Address spender, int seq) throws IOException{
+        pendingDecisions.put(seq, new ConcurrentHashMap<>());
+        GetAllowance getAllowanceRequest = new GetAllowance(owner, spender, "ISTCoin", null, -1, seq);
+        String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
+        String packet = "GetAllowance=";
+        try {
+            String unsignedJson = GsonUtils.GSON.toJson(getAllowanceRequest);
+            byte[] signature = CryptoLib.sign(unsignedJson.getBytes(), PRIVATE_KEY_PATH);
+            getAllowanceRequest.setSignature(signature);
+            String json = GsonUtils.GSON.toJson(getAllowanceRequest);
+            packet += json;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        sendMessage(packet);
+    }
+
     private void sendMessage(String packet) throws IOException {
         for (ReplicaInfo replica : config.getAllReplicas()) {
             networkLayerLib.alpSend(packet, replica.getIP(), replica.getPort());
@@ -288,6 +314,15 @@ public class Client implements DeliveryListener{
             String reply = Long.toString(getBalanceReply.getBalance());
             System.out.println("Balance for " + getBalanceReply.getAddress() + " (" + getBalanceReply.getCoin() + "): " + getBalanceReply.getBalance());
             registerDecidedReply(getBalanceReply.getSequenceNumber(), senderPort, reply);
+        }
+        if (payload.startsWith("GetAllowanceResponse=")) {
+            String json = payload.substring("GetAllowanceResponse=".length());
+            GetAllowance getAllowanceReply = GsonUtils.GSON.fromJson(json, GetAllowance.class);
+            String reply = Long.toString(getAllowanceReply.getAllowance());
+            System.out.println("Allowance for owner=" + getAllowanceReply.getOwner() +
+                             " spender=" + getAllowanceReply.getSpender() +
+                             " (" + getAllowanceReply.getCoin() + "): " + getAllowanceReply.getAllowance());
+            registerDecidedReply(getAllowanceReply.getSequenceNumber(), senderPort, reply);
         }
         if (payload.startsWith("TransactionResponse=")) {
             String json = payload.substring("TransactionResponse=".length());
@@ -421,14 +456,24 @@ public class Client implements DeliveryListener{
         }
     }
 
-    private String readAllowanceAction(Scanner scanner) {
+    private Long readLongAllowZero(Scanner scanner, String prompt) {
         while (true) {
-            System.out.print("Choose allowance action (+ to increase, - to decrease): ");
+            System.out.print(prompt);
             String input = scanner.nextLine().trim();
-            if ("+".equals(input) || "-".equals(input)) {
-                return input;
+            long value;
+            try {
+                value = Long.parseLong(input);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid number: " + input);
+                continue;
             }
-            System.out.println("Invalid action. Use '+' to increase or '-' to decrease.");
+
+            if (value < 0) {
+                System.out.println("Value must be zero or positive.");
+                continue;
+            }
+
+            return value;
         }
     }
 
