@@ -308,6 +308,15 @@ public class BlockchainMember {
                 long gasUsed;
 
                 if (isNativeTransfer) {
+                    gasUsed = 21000; // Fixed gas cost for native transfer FIXME: talvez mudar
+
+                    if (gasUsed > tx.getGasLimit()) {
+                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));
+                        System.out.println("Native transfer failed due to insufficient gas limit");
+                        tx.executionSuccess = false;
+                        continue;
+                    }
+
                     MutableAccount recipientAccount = (MutableAccount) evm.world.get(tx.to);
                     if (recipientAccount == null) {
                         evm.createAccount(tx.to, Wei.ZERO);
@@ -320,7 +329,6 @@ public class BlockchainMember {
                         recipientAccount.setBalance(recipientAccount.getBalance().add(Wei.of(tx.getValue())));
                     }
 
-                    gasUsed = 21000; // Fixed gas cost for native transfer FIXME: talvez mudar
                     tx.executionSuccess = true;
 
                 } else {
