@@ -30,7 +30,8 @@ public class Client implements DeliveryListener{
     private NetworkLayerLib networkLayerLib;
     private UdpReceiver receiver;
     private final ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, String>> pendingDecisions = new ConcurrentHashMap<>();
-    private int sequenceNumber = 0;
+    private int sequenceNumber = 0;      // For tracking request/response pairs (all operations)
+    private int transactionNonce = 0;    // For blockchain transactions only (increments on success)
 
     public Client(ClientConfig config, DatagramSocket socket) {
         this.config = config;
@@ -84,19 +85,17 @@ public class Client implements DeliveryListener{
                         null,
                         gasLimit,
                         gasPrice,
-                        sequenceNumber,
+                        transactionNonce++,
                         null
                     );
 
-                    sequenceNumber++;
-
                     try {
-                        sendTransaction(DepCoinTransferRequest);
+                        sendTransaction(DepCoinTransferRequest, sequenceNumber++);
                     } catch (Exception e) {
                         System.err.println("Error sending DepCoin transfer: " + e.getMessage());
                     }
                     break;
-                case "1": 
+                case "1":
                     // ISTCoin transfer through contract
                     Address recipientAddress = readAddressForClient(scanner, "Enter recipient client ID: ");
                     Long istValue = readLong(scanner, "Enter value: ");
@@ -113,14 +112,12 @@ public class Client implements DeliveryListener{
                         transferData.toArray(),
                         istGasLimit,
                         istGasPrice,
-                        sequenceNumber,
+                        transactionNonce++,
                         null
                     );
 
-                    sequenceNumber++;
-
                     try {
-                        sendTransaction(istCoinTransferRequest);
+                        sendTransaction(istCoinTransferRequest, sequenceNumber++);
                     } catch (Exception e) {
                         System.err.println("Error sending ISTCoin transfer: " + e.getMessage());
                     }
@@ -148,14 +145,12 @@ public class Client implements DeliveryListener{
                         allowanceData.toArray(),
                         allowanceGasLimit,
                         allowanceGasPrice,
-                        sequenceNumber,
+                        transactionNonce++,
                         null
                     );
 
-                    sequenceNumber++;
-
                     try {
-                        sendTransaction(allowanceRequest);
+                        sendTransaction(allowanceRequest, sequenceNumber++);
                     } catch (Exception e) {
                         System.err.println("Error sending allowance change: " + e.getMessage());
                     }
@@ -178,14 +173,12 @@ public class Client implements DeliveryListener{
                         transferFromData.toArray(),
                         gasLimitTF,
                         gasPriceTF,
-                        sequenceNumber,
+                        transactionNonce++,
                         null
                     );
 
-                    sequenceNumber++;
-
                     try {
-                        sendTransaction(transferFromRequest);
+                        sendTransaction(transferFromRequest, sequenceNumber++);
                     } catch (Exception e) {
                         System.err.println("Error sending transferFrom: " + e.getMessage());
                     }
@@ -234,8 +227,8 @@ public class Client implements DeliveryListener{
         }
     }
 
-    private void sendTransaction(Transaction request) throws Exception {
-        pendingDecisions.put(request.getNonce(), new ConcurrentHashMap<>());
+    private void sendTransaction(Transaction request, int trackingSeq) throws Exception {
+        pendingDecisions.put(trackingSeq, new ConcurrentHashMap<>());
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
         String packet = "NewTransaction=";
         try {

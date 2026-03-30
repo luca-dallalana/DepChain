@@ -297,6 +297,10 @@ public class BlockchainMember {
                 if (tx.getGasPrice() <= 0 || tx.getGasLimit() <= 0) throw new RuntimeException("Gas price and limit must be positive");
                 if (senderAccount.getNonce() != tx.getNonce()) throw new RuntimeException("Invalid nonce");
 
+                // Increment nonce immediately after validation - any transaction with valid nonce increments it
+                senderAccount.incrementNonce();
+                trackedAddresses.add(tx.from);
+
                 long maxCost = tx.getValue() + (tx.getGasPrice() * tx.getGasLimit());
                 if (senderAccount.getBalance().toLong() < maxCost) throw new RuntimeException("Insufficient balance");
 
@@ -316,7 +320,6 @@ public class BlockchainMember {
                         recipientAccount.setBalance(recipientAccount.getBalance().add(Wei.of(tx.getValue())));
                     }
 
-                    senderAccount.incrementNonce();
                     gasUsed = 21000; // Fixed gas cost for native transfer FIXME: talvez mudar
                     tx.executionSuccess = true;
 
@@ -326,8 +329,6 @@ public class BlockchainMember {
 
                     if (gasUsed > tx.getGasLimit()) {
                         senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));
-                        senderAccount.incrementNonce();
-                        trackedAddresses.add(tx.from);
                         System.out.println("Transaction failed due to lack of gas");
                         tx.executionSuccess = false;
                         continue;
@@ -335,13 +336,10 @@ public class BlockchainMember {
 
                     if (!result.isSuccess()) {
                         senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
-                        senderAccount.incrementNonce();
-                        trackedAddresses.add(tx.from);
                         System.out.println("Contract call failed");
                         tx.executionSuccess = false;
                         continue;
                     }
-                    senderAccount.incrementNonce();
                     tx.executionSuccess = true;
                 }
 
