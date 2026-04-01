@@ -8,15 +8,13 @@ import org.web3j.utils.Numeric;
 public class GetAllowance {
     private Address owner;
     private Address spender;
-    private String coin;
     private byte[] signature;
     private long allowance;
     private int sequenceNumber;
 
-    public GetAllowance(Address owner, Address spender, String coin, byte[] signature, long allowance, int sequenceNumber) {
+    public GetAllowance(Address owner, Address spender, byte[] signature, long allowance, int sequenceNumber) {
         this.owner = owner;
         this.spender = spender;
-        this.coin = coin;
         this.signature = signature;
         this.allowance = allowance;
         this.sequenceNumber = sequenceNumber;
@@ -28,10 +26,6 @@ public class GetAllowance {
 
     public Address getSpender() {
         return spender;
-    }
-
-    public String getCoin() {
-        return coin;
     }
 
     public byte[] getSignature() {

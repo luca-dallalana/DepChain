@@ -41,12 +41,6 @@ public class BlockchainMember {
 
         Block currentBlock = lastExecutedBlock;
         for (Block b : blocksToExecute) {
-            if (!isValidBlock(b, currentBlock)) {
-                throw new RuntimeException("Block validation failed for block #" + b.blockNumber + " with hash: " + b.blockHash);
-            }
-
-            blockStore.storeBlock(b);
-
             try {
                 String blockPath = "../blockchain_data/block_" + b.blockNumber + ".json";
                 b.saveToFile(blockPath);
@@ -310,7 +304,7 @@ public class BlockchainMember {
                 if (isNativeTransfer) {
                     gasUsed = 21000; // Fixed gas cost for native transfer FIXME: talvez mudar
 
-                    if (gasUsed > tx.getGasLimit()) {
+                    if (gasUsed > tx.getMaxTransactionFee()) {
                         senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));
                         System.out.println("Native transfer failed due to insufficient gas limit");
                         tx.executionSuccess = false;

@@ -30,7 +30,8 @@ public class Client implements DeliveryListener{
     private NetworkLayerLib networkLayerLib;
     private UdpReceiver receiver;
     private final ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, String>> pendingDecisions = new ConcurrentHashMap<>();
-    private int sequenceNumber = 0;      // For tracking request/response pairs (all operations)
+    private final ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, String>> pendingReads = new ConcurrentHashMap<>();
+    private int ReadSequence = 0;      // For tracking request/response pairs (all operations)
     private int transactionNonce = 0;    // For blockchain transactions only (increments on success)
 
     public Client(ClientConfig config, DatagramSocket socket) {
@@ -90,7 +91,7 @@ public class Client implements DeliveryListener{
                     );
 
                     try {
-                        sendTransaction(DepCoinTransferRequest, sequenceNumber++);
+                        sendTransaction(DepCoinTransferRequest);
                     } catch (Exception e) {
                         System.err.println("Error sending DepCoin transfer: " + e.getMessage());
                     }
@@ -117,7 +118,7 @@ public class Client implements DeliveryListener{
                     );
 
                     try {
-                        sendTransaction(istCoinTransferRequest, sequenceNumber++);
+                        sendTransaction(istCoinTransferRequest);
                     } catch (Exception e) {
                         System.err.println("Error sending ISTCoin transfer: " + e.getMessage());
                     }
@@ -150,7 +151,7 @@ public class Client implements DeliveryListener{
                     );
 
                     try {
-                        sendTransaction(allowanceRequest, sequenceNumber++);
+                        sendTransaction(allowanceRequest);
                     } catch (Exception e) {
                         System.err.println("Error sending allowance change: " + e.getMessage());
                     }
@@ -178,7 +179,7 @@ public class Client implements DeliveryListener{
                     );
 
                     try {
-                        sendTransaction(transferFromRequest, sequenceNumber++);
+                        sendTransaction(transferFromRequest);
                     } catch (Exception e) {
                         System.err.println("Error sending transferFrom: " + e.getMessage());
                     }
@@ -189,11 +190,11 @@ public class Client implements DeliveryListener{
                         break;
                     }
                     try {
-                        sendGetBalance(depBalanceAddress, "DepCoin", sequenceNumber);
+                        sendGetBalance(depBalanceAddress, "DepCoin", ReadSequence);
                     } catch (IOException e) {
                         System.err.println("Error requesting DepCoin balance: " + e.getMessage());
                     }
-                    sequenceNumber++;
+                    ReadSequence++;
                     break;
                 case "5":
                     Address istBalanceAddress = selectAddressFromList(scanner, "Choose address to check ISTCoin balance:");
@@ -201,11 +202,11 @@ public class Client implements DeliveryListener{
                         break;
                     }
                     try {
-                        sendGetBalance(istBalanceAddress, "ISTCoin", sequenceNumber);
+                        sendGetBalance(istBalanceAddress, "ISTCoin", ReadSequence);
                     } catch (IOException e) {
                         System.err.println("Error requesting ISTCoin balance: " + e.getMessage());
                     }
-                    sequenceNumber++;
+                    ReadSequence++;
                     break;
                 case "6":
                     // Get Allowance (only for ISTCoin - allowances don't exist for native DepCoin)
@@ -215,11 +216,11 @@ public class Client implements DeliveryListener{
                     }
                     Address spenderAddressForAllowance = readAddressForClient(scanner, "Enter spender client ID: ");
                     try {
-                        sendGetAllowance(ownerAddressForAllowance, spenderAddressForAllowance, sequenceNumber);
+                        sendGetAllowance(ownerAddressForAllowance, spenderAddressForAllowance, ReadSequence);
                     } catch (IOException e) {
                         System.err.println("Error requesting allowance: " + e.getMessage());
                     }
-                    sequenceNumber++;
+                    ReadSequence++;
                     break;
                 default:
                     System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Set Allowance), 3 (TransferFrom), 4 (Get DepCoin Balance), 5 (Get ISTCoin Balance), 6 (Get Allowance), or 7 (Exit)");
@@ -227,8 +228,8 @@ public class Client implements DeliveryListener{
         }
     }
 
-    private void sendTransaction(Transaction request, int trackingSeq) throws Exception {
-        pendingDecisions.put(trackingSeq, new ConcurrentHashMap<>());
+    private void sendTransaction(Transaction request) throws Exception {
+        pendingDecisions.put(request.nonce_count, new ConcurrentHashMap<>());
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
         String packet = "NewTransaction=";
         try {
@@ -244,7 +245,7 @@ public class Client implements DeliveryListener{
     }
 
     private void sendGetBalance(Address address, String coin, int seq) throws IOException{
-        pendingDecisions.put(seq, new ConcurrentHashMap<>());
+        pendingReads.put(seq, new ConcurrentHashMap<>());
         GetBalance getBalanceRequest = new GetBalance(address, coin, null, -1, seq);
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
         String packet = "GetBalance=";
@@ -261,8 +262,8 @@ public class Client implements DeliveryListener{
     }
 
     private void sendGetAllowance(Address owner, Address spender, int seq) throws IOException{
-        pendingDecisions.put(seq, new ConcurrentHashMap<>());
-        GetAllowance getAllowanceRequest = new GetAllowance(owner, spender, "ISTCoin", null, -1, seq);
+        pendingReads.put(seq, new ConcurrentHashMap<>());
+        GetAllowance getAllowanceRequest = new GetAllowance(owner, spender, null, -1, seq);
         String PRIVATE_KEY_PATH = "../rsa_keys/client_" + config.getID() + "/client_" + config.getID() + ".privatekey";
         String packet = "GetAllowance=";
         try {
@@ -306,16 +307,16 @@ public class Client implements DeliveryListener{
             GetBalance getBalanceReply = GsonUtils.GSON.fromJson(json, GetBalance.class);
             String reply = Long.toString(getBalanceReply.getBalance());
             System.out.println("Balance for " + getBalanceReply.getAddress() + " (" + getBalanceReply.getCoin() + "): " + getBalanceReply.getBalance());
-            registerDecidedReply(getBalanceReply.getSequenceNumber(), senderPort, reply);
+            registerDecidedRead(getBalanceReply.getSequenceNumber(), senderPort, reply);
         }
         if (payload.startsWith("GetAllowanceResponse=")) {
             String json = payload.substring("GetAllowanceResponse=".length());
             GetAllowance getAllowanceReply = GsonUtils.GSON.fromJson(json, GetAllowance.class);
             String reply = Long.toString(getAllowanceReply.getAllowance());
-            System.out.println("Allowance for owner=" + getAllowanceReply.getOwner() +
-                             " spender=" + getAllowanceReply.getSpender() +
-                             " (" + getAllowanceReply.getCoin() + "): " + getAllowanceReply.getAllowance());
-            registerDecidedReply(getAllowanceReply.getSequenceNumber(), senderPort, reply);
+            System.out.println("Allowance for owner= " + getAllowanceReply.getOwner() +
+                             " spender= " + getAllowanceReply.getSpender() +
+                             " is: " + getAllowanceReply.getAllowance());
+            registerDecidedRead(getAllowanceReply.getSequenceNumber(), senderPort, reply);
         }
         if (payload.startsWith("TransactionResponse=")) {
             String json = payload.substring("TransactionResponse=".length());
@@ -340,6 +341,32 @@ public class Client implements DeliveryListener{
             if (matchingReplies >= config.getF() + 1){
                 System.out.println("Transaction seq=" + sequence + " decided: " + reply);
                 pendingDecisions.remove(sequence, repliesByReplica);
+                System.out.print("\n> ");
+                System.out.flush();
+            }
+        }
+    }
+
+    private void registerDecidedRead(int sequence, int senderPort, String reply) {
+        ConcurrentHashMap<Integer, String> repliesByReplica = pendingReads.get(sequence);
+        if (repliesByReplica == null) {
+            return;
+        }
+
+        if (repliesByReplica.putIfAbsent(senderPort, reply) == null) {
+            long matchingReplies = repliesByReplica.values().stream()
+                .filter(reply::equals)
+                .count();
+            if (matchingReplies >= config.getF() + 1){
+                System.out.println("Read seq=" + sequence + " decided: " + reply);
+                pendingReads.remove(sequence, repliesByReplica);
+                System.out.print("\n> ");
+                System.out.flush();
+            }
+            
+            if (repliesByReplica.size() == config.getQuorumSize()) {
+                System.out.println("Read seq=" + sequence + " Failed please try again");
+                pendingReads.remove(sequence, repliesByReplica);
                 System.out.print("\n> ");
                 System.out.flush();
             }

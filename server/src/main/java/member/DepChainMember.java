@@ -171,7 +171,7 @@ public class DepChainMember implements DeliveryListener{
             int senderId = senderPort - 4000;
             String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
 
-            GetAllowance unsignedRequest = new GetAllowance(request.getOwner(), request.getSpender(), request.getCoin(), null, -1, request.getSequenceNumber());
+            GetAllowance unsignedRequest = new GetAllowance(request.getOwner(), request.getSpender(), null, -1, request.getSequenceNumber());
             byte[] requestBytes = GsonUtils.GSON.toJson(unsignedRequest).getBytes();
 
             try {
@@ -878,7 +878,6 @@ public class DepChainMember implements DeliveryListener{
         GetAllowance response = new GetAllowance(
             request.getOwner(),
             request.getSpender(),
-            request.getCoin(),
             null,
             allowance,
             request.getSequenceNumber()
