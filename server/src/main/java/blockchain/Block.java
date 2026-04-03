@@ -99,7 +99,7 @@ public class Block {
         return leaf;
     }
 
-    public static Block createAndSaveGenesis(String projectRoot) { // FIXME: change string to Address
+    public static Block createAndSaveGenesis(String projectRoot) { 
         try {
             // 1. Generate client addresses from public keys
             String client0Addr = AddressUtils.generateAddressFromPublicKey(projectRoot + "/rsa_keys/client_0/client_0.pubkey");

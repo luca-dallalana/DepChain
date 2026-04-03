@@ -302,7 +302,7 @@ public class BlockchainMember {
                 long gasUsed;
 
                 if (isNativeTransfer) {
-                    gasUsed = 21000; // Fixed gas cost for native transfer FIXME: talvez mudar
+                    gasUsed = 21000; // Fixed gas cost for native transfer 
 
                     if (gasUsed > tx.getMaxTransactionFee()) {
                         senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));

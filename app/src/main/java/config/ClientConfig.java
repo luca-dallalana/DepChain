@@ -38,7 +38,7 @@ public class ClientConfig {
 
         fillReplicasInfo();
         fillClientAccountAddresses();
-        this.istCoinContractAddress = Address.fromHexString(Block.IST_COIN_ADDRESS); //FIXME this is a Diogo hack
+        this.istCoinContractAddress = Address.fromHexString(Block.IST_COIN_ADDRESS); 
 
       
     }

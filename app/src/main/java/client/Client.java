@@ -295,7 +295,7 @@ public class Client implements DeliveryListener{
                 payload = payload.substring(idx + 1);
             }
         }
-        if (payload.startsWith("DECIDED=")) { // DECIDED=5;REPLY=OK //FIXME maybe send a json
+        if (payload.startsWith("DECIDED=")) { // DECIDED=5;REPLY=OK 
             String[] parts = payload.split(";");
             String seqNum = parts[1].split("=")[1];
             String reply = parts[2].split("=")[1];

@@ -51,7 +51,7 @@ public class DepChainMember implements DeliveryListener{
     private Block lastExecutedBlock; // Track last executed block
     private int timeoutCount = 1; // Track number of timeouts for exponential backoff
 
-    private static final long PHASE_TIMEOUT_MS = 8000;  // FIXME check this
+    private static final long PHASE_TIMEOUT_MS = 8000;  
     private Thread timeoutThread;
 
     public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
@@ -206,23 +206,23 @@ public class DepChainMember implements DeliveryListener{
             String json = payload.substring("NewTransaction=".length()).trim();
             Transaction request = GsonUtils.GSON.fromJson(json, Transaction.class);
             
-            if (senderPort < 4000){ //FIXME we should send an error message back to the client instead of just ignoring
+            if (senderPort < 4000){ 
                 System.err.println("Command received is not from a client, ignoring");
                 return;
             }
             
-            if (request.signature == null) { //FIXME we should send an error message back to the client instead of just ignoring
+            if (request.signature == null) { 
                 System.err.println("Invalid signature for client command in message, ignoring");
                 return;
             }
 
             if (request.gasLimit <= 0 || request.gasPrice <= 0) {
-                System.err.println("Invalid gas limit or gas price in client command, ignoring"); //FIXME we should send an error message back to the client instead of just ignoring
+                System.err.println("Invalid gas limit or gas price in client command, ignoring"); 
                 return;
             }
 
             if (request.senderPort != senderPort) {
-                System.err.println("Sender port in transaction does not match actual sender port, ignoring");//FIXME we should send an error message back to the client instead of just ignoring
+                System.err.println("Sender port in transaction does not match actual sender port, ignoring");
                 return;
             }
 
@@ -234,7 +234,7 @@ public class DepChainMember implements DeliveryListener{
 
             try {
                 if(!CryptoLib.verifySignature(transactionBytes, request.signature, PUBLIC_KEY_PATH)){
-                    System.err.println("Invalid signature for client command in message, ignoring"); //FIXME we should send an error message back to the client instead of just ignoring
+                    System.err.println("Invalid signature for client command in message, ignoring"); 
                     return;
                 }
             } catch (Exception e) {
@@ -361,10 +361,9 @@ public class DepChainMember implements DeliveryListener{
         // Clear new-view votes to prevent multiple calls to handlePrepare
         qcManager.clearVotesForTypeView("new-view", curView);
         try {
-            Block maxQCBlock = blockStore.getBlockByHash(maxQC.blockHash);//FIXME this could go wrong if leader doesn't have the block
-
-            if (maxQCBlock == null) { //FIXME this is for testing but its a real issue to fix, maybe propose new view ? or wait for the catch up ?
-                System.err.println("MaxQC block not found in block store, -- ERROR --");
+            Block maxQCBlock = blockStore.getBlockByHash(maxQC.blockHash);
+            if (maxQCBlock == null) { 
+                proposeNewView();
                 return;
             }
 
@@ -406,12 +405,12 @@ public class DepChainMember implements DeliveryListener{
                 byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
     
                 try {
-                    if(!CryptoLib.verifySignature(transactionBytes, tx.signature, PUBLIC_KEY_PATH)){ //FIXME ADD THE NO-OP verification
+                    if(!CryptoLib.verifySignature(transactionBytes, tx.signature, PUBLIC_KEY_PATH)){ 
                         System.err.println("Invalid signature for client transaction in block, proposing new view");
                         proposeNewView();
                         return;
                     }
-                    if(memberConfig.isDuplicateRequest(tx)) { //FIXME check the no-op case
+                    if(memberConfig.isDuplicateRequest(tx)) {
                         System.err.println("Duplicate client command in prepare message, ignoring");
                         proposeNewView();
                         return;
@@ -445,7 +444,7 @@ public class DepChainMember implements DeliveryListener{
             Block parentBlock = blockStore.getBlockByHash(m.justify.blockHash);
             Block proposedBlock = BlockchainMember.buildBlock(parentBlock, m.transactions); // we build the block based on the qc that supports it and the transactions sent by leader
 
-            if (!proposedBlock.blockHash.equals(m.blockHash)) { //FIXME this makes sence right?
+            if (!proposedBlock.blockHash.equals(m.blockHash)) { 
                 System.err.println("Proposed block hash does not match block hash in prepare message");
                 proposeNewView();
                 return;
@@ -729,7 +728,7 @@ public class DepChainMember implements DeliveryListener{
         stopTimeout();
         curView++;
         System.out.println("Proposing new view: " + curView);
-        Message newViewMsg = DepChainUtil.Msg("new-view", null, null ,prepareQC, curView); //FIXME maybe include here the block since the QC no longer has the full block
+        Message newViewMsg = DepChainUtil.Msg("new-view", null, null ,prepareQC, curView); 
         newViewMsg.senderPort = memberConfig.getID() + 3000;
         int leaderID = memberConfig.getLeader(curView);
         ReplicaInfo replica = memberConfig.getReplicaInfo(leaderID);
