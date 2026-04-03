@@ -58,8 +58,9 @@ Once connected, clients can execute the following operations:
 ## Running Tests
 
 ```bash
-mvn test  # Runs all 47 tests
+mvn test  # Runs all 46 tests
 ```
+## Test Suite (46 Tests)
 
 ### Consensus Tests
 
@@ -116,17 +117,16 @@ mvn test  # Runs all 47 tests
 **NegativeBalanceTest** (1 test)
 - `testContractCallCausesNegativeBalance` - Prevents negative balances when contract calls exceed available balance
 
-**TransactionSignatureTest** (3 tests)
+**TransactionSignatureTest** (2 tests)
 - `testValidSignatureAccepted` - Accepts valid RSA signatures
-- `testInvalidSignatureRejected` - Rejects forged signatures
-- `testMalformedSignatureRejected` - Rejects malformed signature data
+- `testWrongSenderAddressWithValidSignature` - Rejects transactions with mismatched sender addresses
 
 **GenesisBlockTest** (1 test)
-- `testGenesisBlockCreation` - Validates genesis block structure and initial account setup
+- `testGenesisCreation` - Validates genesis block structure and initial account setup
 
 **BlockStorePruneTest** (2 tests)
-- `testPruneKeepsRecentBlocks` - Retains blocks within pruning window
-- `testPruneRemovesOldBlocks` - Removes blocks beyond pruning threshold
+- `testPruneKeepsRecentBlocks` - Retains blocks in main chain while removing orphan blocks
+- `testPruneRemovesOldBlocks` - Removes alternative fork blocks after pruning to locked QC
 
 ### Cryptography Tests
 

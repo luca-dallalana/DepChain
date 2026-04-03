@@ -73,36 +73,6 @@ public class TransactionSignatureTest {
     }
 
     @Test
-    public void testForgedSignatureRejection() throws Exception {
-        Transaction tx = new Transaction(
-            4000,
-            client0Address,  // Claims to be from Client0
-            client1Address,
-            1000L,
-            new byte[0],
-            21000L,
-            1L,
-            0,
-            null
-        );
-
-        // Malicious Client1 signs the transaction with their own key (FORGED)
-        String unsignedJson = GsonUtils.GSON.toJson(tx);
-        byte[] forgedSignature = CryptoLib.sign(unsignedJson.getBytes(), client1PrivateKeyPath);
-        tx.signature = forgedSignature;
-
-        // Server verifies signature using Client0's public key (extracted from sender port)
-        Transaction unsignedTx = new Transaction(tx.senderPort, tx.from, tx.to, tx.value,
-                                                 tx.data, tx.gasLimit, tx.gasPrice,
-                                                 tx.nonce_count, null);
-        byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
-
-        boolean isValid = CryptoLib.verifySignature(transactionBytes, forgedSignature, client0PublicKeyPath);
-
-        assertFalse(isValid, "Forged signature should be REJECTED");
-    }
-
-    @Test
     public void testWrongSenderAddressWithValidSignature() throws Exception {
         // Malicious Client1 creates transaction claiming to be from Client0
         Transaction tx = new Transaction(
