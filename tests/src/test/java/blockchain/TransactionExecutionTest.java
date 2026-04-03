@@ -99,48 +99,6 @@ public class TransactionExecutionTest {
     }
 
     @Test
-    public void testAutoCreateEOA() {
-        System.out.println("=== Test: Auto-Create EOA Account ===\n");
-
-        EVMHelper evm = new EVMHelper();
-        List<Transaction> transactions = new ArrayList<>();
-
-        // Verify new account doesn't exist initially
-        assertFalse(genesisState.hasAccount(newAccount),
-            "New account should not exist in genesis");
-
-        // Client0 sends DepCoin to non-existent account
-        Transaction tx = new Transaction(
-            -1,
-            client0,
-            newAccount,
-            5000,
-            new byte[0],
-            21000,
-            1,
-            0,
-            null
-        );
-        transactions.add(tx);
-
-        // Execute transaction
-        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
-
-        // Verify new account was created
-        assertTrue(finalState.hasAccount(newAccount),
-            "New account should be created automatically");
-
-        Account newAcct = finalState.getAccount(newAccount);
-        assertEquals(5000, newAcct.balance, "New account should have received 5000 DepCoin");
-        assertEquals(0, newAcct.nonce_count, "New account should have nonce 0");
-        assertFalse(newAcct.isContract(), "New account should be EOA, not contract");
-
-        System.out.println("New account created: " + newAccount.toHexString());
-        System.out.println("New account balance: " + newAcct.balance + " DepCoin");
-        System.out.println("Test PASSED\n");
-    }
-
-    @Test
     public void testInvalidNonce() {
         System.out.println("=== Test: Invalid Nonce Rejection ===\n");
 

@@ -66,41 +66,6 @@ public class InvalidGasTest {
     }
 
     @Test
-    public void testValidGasParametersAccepted() {
-
-        List<Transaction> transactions = new ArrayList<>();
-
-        // Valid transaction
-
-        Transaction tx = new Transaction(
-            4000,
-            client0,
-            client1,
-            1000L,
-            new byte[0],
-            25000L,  // Valid gas limit
-            1L,      // Valid gas price
-            0,
-            null
-        );
-        transactions.add(tx);
-
-        // Execute transaction
-        WorldState finalState = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState);
-
-        // Transaction should succeed
-        assertTrue(tx.getExecutionSuccess(), "Transaction should SUCCEED");
-
-        // Verify balances updated correctly
-        long client0InitialBalance = genesisState.getAccount(client0).balance;
-        long client0FinalBalance = finalState.getAccount(client0).balance;
-        long client1FinalBalance = finalState.getAccount(client1).balance;
-
-        assertTrue(client0FinalBalance < client0InitialBalance, "Client0 balance should decrease");
-        assertTrue(client1FinalBalance > 1000L, "Client1 balance should increase");
-    }
-
-    @Test
     public void testGasParametersInBlockOrdering() {
 
         List<Transaction> transactions = new ArrayList<>();

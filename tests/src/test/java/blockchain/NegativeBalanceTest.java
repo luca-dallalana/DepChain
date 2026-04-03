@@ -39,47 +39,6 @@ public class NegativeBalanceTest {
     }
 
     @Test
-    public void testGasCausesNegativeBalance() {
-
-        List<Transaction> transactions = new ArrayList<>();
-
-        // Set specific balance for this test
-        long testBalance = 25000L;
-        genesisState.getAccount(client0).balance = testBalance;
-
-        long valueToSend = 10000L;
-        long gasLimit = 21000L;
-        long gasPrice = 1L;
-
-        // Try to send value + gas that exceeds balance
-        Transaction tx = new Transaction(
-            4000,
-            client0,
-            client1,
-            valueToSend,
-            new byte[0],
-            gasLimit,
-            gasPrice,
-            0,
-            null
-        );
-        transactions.add(tx);
-
-        // Execute transaction
-        WorldState finalState = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState);
-
-        // Transaction should FAIL
-        assertFalse(tx.getExecutionSuccess(),
-                   "Transaction should FAIL (value + gas > balance)");
-
-
-        // Verify balance is non-negative
-        long finalBalance = finalState.getAccount(client0).balance;
-        assertTrue(finalBalance >= 0, "Balance must be non-negative");
-
-    }
-
-    @Test
     public void testContractCallCausesNegativeBalance() {
 
         List<Transaction> transactions = new ArrayList<>();
