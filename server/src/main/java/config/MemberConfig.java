@@ -9,14 +9,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import blockchain.Transaction;
 import info.ReplicaInfo;
-import model.ClientRequest;
 
 public class MemberConfig {
     private final int ID;               // This replica's ID
     private final int N;                                    // Total number of replicas
     private final int F;                                    // Byzantine fault tolerance
     private ConcurrentHashMap<Integer, ReplicaInfo> replicas = new ConcurrentHashMap<>();
-    private Set<ClientRequest> pendingCommands = ConcurrentHashMap.newKeySet(); // Commands to be executed
     private ConcurrentHashMap<Integer, Integer> ClientsLastSequence = new ConcurrentHashMap<>(); // Track last request sequence number for each client maps client port -> lastSequenceNumber
     private List<Transaction> pendingTransactions = new ArrayList<>(); // Transactions to be included in blocks
     private byte[] blsPrivateKey;
@@ -84,19 +82,6 @@ public class MemberConfig {
                 replicas.put(i, new ReplicaInfo(i, "localhost", 3000 + i, null));
             }
         }
-    }
-
-
-    public Set<ClientRequest> getPendingCommands() {
-        return pendingCommands;
-    }
-
-    public void addPendingCommand(ClientRequest command) {
-        this.pendingCommands.add(command);
-    }
-
-    public void removePendingCommand(ClientRequest command) {
-        this.pendingCommands.remove(command);
     }
 
     public List<Transaction> getPendingTransactions() {

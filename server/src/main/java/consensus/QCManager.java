@@ -12,7 +12,6 @@ import config.MemberConfig;
 import crypto.CryptoLib;
 import crypto.ThresholdSignatureService;
 import model.Message;
-import model.Node;
 import model.QC;
 
 public class QCManager {

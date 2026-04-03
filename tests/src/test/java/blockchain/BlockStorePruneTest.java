@@ -90,6 +90,15 @@ public class BlockStorePruneTest {
 
     @Test
     public void testPruneRemovesOldBlocks() throws Exception {
+        // Build two competing forks from the same parent:
+        //                  ├─ Block 3 (height 3, LOCKED) ← main chain
+        // Genesis -> B1 -> B2 <
+        //                  └─ Block 4 (height 3, alternative fork)
+        //                      └─ Block 5 (height 4, extending fork)
+        //
+        // Expected: After pruning to B3 (locked), B4 and B5 should be removed
+        // because they're on an alternative fork that doesn't have the new locked block
+
         List<Transaction> txs1 = new ArrayList<>();
         txs1.add(createTransaction(client0, client1, 100));
         Block block1 = buildBlock(genesisBlock, txs1);
@@ -117,11 +126,14 @@ public class BlockStorePruneTest {
 
         int prunedCount = blockStore.pruneToLockedSubtree(block3.blockHash);
 
+        // Verify main chain blocks still exist
         assertEquals(2, prunedCount);
         assertNotNull(blockStore.getBlockByHash(genesisBlock.blockHash));
         assertNotNull(blockStore.getBlockByHash(block1.blockHash));
         assertNotNull(blockStore.getBlockByHash(block2.blockHash));
         assertNotNull(blockStore.getBlockByHash(block3.blockHash));
+        
+        // Verify alternative fork blocks are removed
         assertNull(blockStore.getBlockByHash(block4.blockHash));
         assertNull(blockStore.getBlockByHash(block5.blockHash));
     }
