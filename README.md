@@ -1,225 +1,186 @@
 # DepChain — Byzantine Fault-Tolerant Blockchain
 
-DepChain is a permissioned blockchain built from scratch in Java that tolerates up to *f* Byzantine (arbitrarily malicious) replicas among a network of *N = 3f + 1* nodes. It combines a HotStuff-inspired four-phase BFT consensus protocol with a fully functional EVM execution layer, supporting both native coin transfers and ERC-20 smart contracts.
+DepChain is a permissioned blockchain built entirely in Java from first principles, implementing a HotStuff-variant four-phase BFT consensus protocol that tolerates up to f Byzantine-faulty replicas in a network of N = 3f+1 nodes, "Byzantine" meaning arbitrarily malicious, not just crashed. Every committed block carries a BLS-aggregated quorum certificate (QC) signed by at least 2f+1 replicas; the execution layer runs against Hyperledger Besu's full EVM at Cancun spec rather than a custom bytecode interpreter; and the transport layer provides authenticated perfect links over raw UDP through RSA-authenticated Diffie-Hellman handshakes and HMAC-SHA256 per-message authentication. Replicas don't accept the leader's block hash on faith: each one independently re-executes every transaction in the proposal against its local world state, recomputes the block hash, and only signs if the hashes match. The consensus, cryptography, and network layers are all implemented from primitives, no BFT framework, no reliability library.
 
-## Tech Stack
+## Why This Is Hard
 
-**Language & Build**
-- Java 11, Maven (multi-module: `server`, `app`, `utils`, `tests`)
+The centerpiece of HotStuff correctness is the `safeBlock` predicate. A replica casts a vote in the Prepare phase only if `safeBlock(block, justifyQC)` returns true, and getting either branch wrong breaks the protocol in a distinct, hard-to-diagnose way.
 
-**Cryptography**
-- RSA 2048-bit — transaction signing and Diffie-Hellman key authentication
-- BLS threshold signatures — Teku (`tech.pegasys.teku`) for per-vote partial signatures and QC aggregation
-- HMAC-SHA256 — per-message authentication after DH key exchange
-- Diffie-Hellman 2048-bit — pairwise shared-secret establishment over UDP
-- SHA-256 — block hashing
-
-**Blockchain / EVM**
-- Hyperledger Besu EVM v25.2.1 (`org.hyperledger.besu:evm`)
-- Apache Tuweni — byte handling
-- Web3j — ABI encoding for Solidity function calls
-- Solidity (`solc`, Cancun EVM version) — ISTCoin smart contract
-
-**Serialization & Transport**
-- Gson — JSON serialisation of messages and blocks
-- Raw UDP — custom reliable authenticated channel layered on top
-
-**Testing**
-- JUnit 5, Mockito
-
-## Features
-
-- BFT consensus with safety and liveness guarantees up to *f* Byzantine faults
-- EVM smart contract execution — deploy and call Solidity contracts inside each block
-- Native coin (DepCoin) transfers with gas-based fee deduction
-- ERC-20 token (ISTCoin) with front-running-resistant `approve` (requires `expectedCurrentValue`)
-- Gas-price-prioritised transaction ordering within a block gas cap (210,000 gas)
-- Replay attack prevention via per-sender nonces tracked across consensus rounds
-- Authenticated Perfect Links — DH-derived HMAC + sequence numbers + stubborn retransmission
-- Catch-up protocol — lagging replicas request missing blocks from peers and re-execute state
-- Block store pruning — alternative fork branches are discarded when a QC is locked
-
-## Architecture / How It Works
-
-The project is split into four Maven modules:
+The predicate, as implemented in `DepChainMember`:
 
 ```
-server/   — replica: consensus engine + EVM execution
-app/      — client CLI
-utils/    — shared library: crypto, networking, transaction model
-tests/    — unit and integration tests
+safeBlock(b, qc):
+  if lockedQC == null:
+    return extendsFrom(b, qc.blockHash)
+  return extendsFrom(b, lockedQC.blockHash)   // safety branch
+      || qc.viewNumber > lockedQC.viewNumber    // liveness branch
 ```
 
-### Consensus (HotStuff variant)
+"Locked" means a pre-commitQC exists: at least 2f+1 replicas have sent a pre-commit vote, meaning a quorum is aware of this block and any future commit must involve a set of replicas that overlaps with those voters. A block can only be committed if it was first locked.
 
-Each consensus round is a **view**. The leader for view *v* is `v % N` (round-robin). A round proceeds through four phases:
+**If you remove the safety branch**, a Byzantine leader can present different proposals to different partitions of the network. Both partitions might independently reach 2f+1 votes, from overlapping sets of correct replicas that don't know about each other's locks, and two different blocks commit at the same height. The fork is permanent and unrecoverable.
 
-1. **Prepare** — leader collects `new-view` messages (each carrying the sender's highest `prepareQC`), picks the highest, builds a block, and broadcasts a signed `prepare` message. Replicas validate every transaction in the proposal before voting.
-2. **Pre-Commit** — leader aggregates 2*f*+1 `prepare` votes into a `prepareQC` (BLS-aggregated) and broadcasts it. Replicas update their `prepareQC`.
-3. **Commit** — leader forms a `pre-commitQC`, replicas update their `lockedQC`. The block tree is pruned to the locked subtree at this point.
-4. **Decide** — leader forms a `commitQC` and broadcasts `decide`. Replicas execute the block and persist it to `blockchain_data/`.
+**If you remove the liveness branch**, the system can stall whenever a quorum locks on a block that no subsequent leader can extend via the safety branch alone. Concretely: suppose 2f+1 replicas process the commit message at view 5 and update their `lockedQC` to the pre-commitQC, but the leader then crashes before broadcasting the decide message. At view 6, a new leader proposes a block extending a different branch, its best prepareQC is at view 4, before the lock formed. Every replica that locked at view 5 rejects the proposal: the new block doesn't extend `lockedQC`, and without the liveness branch there's no alternative. If enough replicas are in this state, no quorum forms and the protocol halts indefinitely. The liveness branch provides the escape: when a leader presents a justify QC from a view strictly higher than the replica's lockedQC, the replica can vote even if the proposal doesn't extend the locked block. A higher-view QC implies a quorum has already progressed past that state, which means the locked block's commit window has closed.
 
-A replica votes in Prepare only if `safeBlock` holds: the block extends from `lockedQC` (safety) **or** the justify QC has a higher view than `lockedQC` (liveness). Timeouts use exponential backoff (doubling up to 64×) to prevent livelock under Byzantine leaders.
+The interaction between view changes and block-tree pruning is where I found the correctness argument hardest to hold in my head. Pruning happens at the Commit phase: when a replica receives a commit message carrying a pre-commitQC, it updates its `lockedQC` and immediately removes from its block store every block that isn't in the ancestry chain of the newly locked block. This keeps memory bounded and eliminates stale fork branches. But it creates a timing hazard: if a replica falls one or more views behind and misses the commit message, it may receive a prepare message for a block whose parent was just pruned from its store. The replica fires a catch-up request to the message sender, asking for the missing chain between its current lockedQC and the referenced block, and continues processing other messages while waiting for the response. When the missing blocks arrive, they're stored and the replica can resume voting normally. The catch-up protocol works precisely because pruning only removes blocks outside the locked subtree. A catch-up request asks for the chain between the requester's lockedQC and a target block hash, and a server always retains its full locked ancestry, so the requested blocks are always available.
 
-### Network Layer (Authenticated Perfect Links)
+## Architecture
 
-Before sending the first application message to a peer, a node performs an **RSA-authenticated Diffie-Hellman handshake** to derive a pairwise HMAC-SHA256 key. Every subsequent UDP packet is tagged with a sequence number and HMAC. The receiving side buffers out-of-order packets and delivers them in order, sending ACKs; the sender retransmits until ACKed (Stubborn Links → Authenticated Perfect Links).
+The project is organized as four Maven modules: `server` (replica consensus and EVM execution), `app` (client CLI), `utils` (shared crypto, networking, and transaction model), and `tests` (unit and integration tests).
 
-### Blockchain & EVM
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Clients                              Replicas                  │
+│                                                                 │
+│  ┌────────┐   Transaction (RSA sig)   ┌──────────────────────┐ │
+│  │client 0├──────────────────────────►│                      │ │
+│  └────────┘                           │   Leader (view % N)  │ │
+│  ┌────────┐   new-view (prepareQC)    │                      │ │
+│  │client 1│◄──────────────────────────┤◄──────────────────── │ │
+│  └────────┘                           └──────────┬───────────┘ │
+│                                                  │             │
+│                                    ┌─────────────▼──────────┐ │
+│                                    │  PREPARE               │ │
+│                                    │  build block proposal  │ │
+│                                    │  broadcast prepare ────┼─┼──► replicas
+│                                    │  ◄── prepare votes ────┼─┼──  (BLS partial sig)
+│                                    └─────────────┬──────────┘ │
+│                                                  │             │
+│                                    ┌─────────────▼──────────┐ │
+│                                    │  PRE-COMMIT            │ │
+│                                    │  form prepareQC        │ │
+│                                    │  broadcast pre-commit ─┼─┼──► replicas
+│                                    │  ◄── pre-commit votes ─┼─┼──  lockedQC updated
+│                                    └─────────────┬──────────┘ │
+│                                                  │  block tree │
+│                                    ┌─────────────▼──────────┐ │  pruned here
+│                                    │  COMMIT                │ │
+│                                    │  form precommitQC      │ │
+│                                    │  broadcast commit ─────┼─┼──► replicas
+│                                    │  ◄── commit votes ─────┼─┼──
+│                                    └─────────────┬──────────┘ │
+│                                                  │             │
+│                                    ┌─────────────▼──────────┐ │
+│                                    │  DECIDE                │ │
+│                                    │  form commitQC         │ │
+│                                    │  broadcast decide ─────┼─┼──► replicas
+│  ◄── TransactionResponse ──────────┤  execute block         │ │    execute block
+│                                    │  persist to disk       │ │    persist to disk
+│                                    └────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-Each block stores a list of transactions and the resulting `WorldState` (a map of address → account with balance, nonce, bytecode, and storage). On proposal, the leader calls `BlockchainMember.buildBlockForProposal`, which waits up to 5 s for the mempool to fill the gas cap. Replicas rebuild the block deterministically using `buildBlock` and compare hashes before voting.
+### Consensus: Four Phases
 
-Transaction execution runs inside a Hyperledger Besu `SimpleWorld` EVM instance: nonce checked, balance checked (including max gas cost), then either a native ETH-style transfer or an EVM call. Failed transactions still consume gas (nonce is incremented) to prevent replay.
+Each HotStuff round is a **view**. The leader for view `v` is `v % N` (round-robin, as computed by `MemberConfig.getLeader`). Every phase transition requires a quorum of 2f+1 votes, certified by a BLS-aggregated QC.
 
-The **genesis block** is created on every replica startup. It deploys the `ISTCoin` Solidity contract at a fixed address and funds two client accounts (derived from their RSA public keys) with DepCoin and an equal split of the 100M ISTCoin supply.
+**Prepare**: The leader collects `new-view` messages from 2f+1 replicas, each carrying the sender's current highest `prepareQC`. It selects the one with the highest view number, retrieves the corresponding block from its store, and builds a new block proposal on top of it. The leader waits up to 5 seconds for the transaction mempool to fill the block gas limit (210,000 gas), then orders transactions by gas price (highest first, with nonces enforced sequentially per sender) and executes them against its local world state using the Besu EVM. The resulting block hash is a SHA-256 over the parent hash, block number, all transaction fields, and the full world state serialized in deterministic order (accounts by address, storage by key). The leader broadcasts a `prepare` message carrying this hash, the full transaction list, and the justify QC.
+
+Replicas receive the prepare message and independently rebuild the block: they re-execute every transaction, verify each transaction's RSA signature, check the sender port against the from-address, and compare the resulting hash to what the leader sent. If the hashes match and `safeBlock(proposedBlock, justifyQC)` holds, the replica produces a BLS partial signature over `SHA-256(type_bytes || viewNumber_int32 || blockHash_bytes)` and sends it to the leader as a prepare vote.
+
+**Pre-Commit**: The leader collects 2f+1 prepare votes, aggregates their BLS partial signatures using Teku's `BLS.aggregate`, and forms a `prepareQC`. It broadcasts a `pre-commit` message carrying this QC. Replicas verify the aggregated signature using `BLS.fastAggregateVerify` against the signer public key set, store the proposed block, update their `prepareQC`, and send a pre-commit vote.
+
+**Commit**: The leader collects 2f+1 pre-commit votes, forms a `precommitQC`, and broadcasts a `commit` message. Both the leader and replicas then set `lockedQC` to this precommitQC and prune their block stores to the subtree rooted at the locked block, discarding all competing fork branches. Replicas send commit votes.
+
+**Decide**: The leader collects 2f+1 commit votes, forms a `commitQC`, and broadcasts a `decide` message. Every replica (including the leader) retrieves the committed block, executes it against the current world state via the Besu EVM, and persists the result to `blockchain_data/block_N.json`. Clients are notified via `TransactionResponse` messages. Both leader and replicas then advance to the next view by sending `new-view` with their current `prepareQC`.
+
+Timeouts use exponential backoff starting at 8 seconds and doubling up to 64×, which prevents livelock under a Byzantine leader that never completes a phase. A successful phase completion resets the multiplier to 1.
+
+### Network: Authenticated Perfect Links
+
+All inter-node communication flows over raw UDP. Before the first application message to any peer, the initiator generates a 2048-bit DH key pair, signs the public key with its RSA private key (SHA256withRSA), and sends a `DH REQ` packet. The responder verifies the RSA signature using the sender's known public key, generates its own DH key pair with the initiator's DH parameters, derives the shared secret, and replies with its own public key identically signed. Both sides derive an HMAC-SHA256 key from the first 32 bytes of the shared secret. This RSA-over-DH binding prevents a man-in-the-middle from substituting their own DH public key during the handshake.
+
+Once the handshake completes, every outgoing application message is prefixed with a sequence number and appended with an HMAC tag computed over `SEQ=<n> <payload>` using the pairwise key. The receiver verifies the HMAC before delivering; a failed check silently drops the packet. ACK messages, sent as plaintext `ACK=<n>`, are not HMAC-tagged, since they carry no payload that could be forged to cause harm.
+
+The stubborn link layer keeps every sent packet in an `unAcked` map keyed by (port, sequence). A background thread re-sends each unacknowledged packet every 600ms until an ACK for that sequence number arrives. The in-order delivery layer buffers out-of-order packets in `outOfOrderMessages` keyed by (port, seq) and delivers them to the application only when the sequence is contiguous from the last delivered, draining the buffer when a gap closes.
+
+## What Makes This Different
+
+Most portfolio blockchain projects either wrap an existing consensus library (Tendermint, LibHotstuff) or implement a simplified happy-path protocol with a toy interpreter and TCP sockets. This project differs on four axes:
+
+**From the paper, not a library**: The entire consensus path, `safeBlock`, QC formation, QC verification, view change, and catch-up, is implemented from the protocol specification with no third-party BFT framework. The `QCManager`, `DepChainMember`, and `DepChainUtil` classes together constitute the full consensus engine, including the vote deduplication, BLS partial signature verification per vote, and the two-branch safety/liveness predicate.
+
+**BLS aggregate signatures for QCs**: In most tutorial BFT implementations, a quorum certificate is a list of N individual replica signatures and verification means checking each one. Here, each vote is a BLS partial signature produced by the voter's own BLS key, and the leader aggregates them into a single constant-size signature using Teku's `BLS.aggregate`. Verification uses `BLS.fastAggregateVerify` against the signer public key set. This is the same QC representation used in Ethereum's beacon chain and Aptos: the QC size is independent of N, and verification is a single pairing operation rather than N independent checks.
+
+**Full EVM via Hyperledger Besu**: Transactions are not interpreted by a custom stack machine. They run against Besu's `SimpleWorld` EVM at Cancun spec, with a real `EVMExecutor`. The `ISTCoin` contract is compiled with `solc`, and the deployment bytecode is embedded in the genesis block via an ABI-encoded deployment call. The `EVMHelper` wraps the Besu executor and extracts return data, gas used, and success/revert status from the EVM trace output.
+
+**Raw UDP with a hand-implemented reliability layer**: No TCP, no Netty, no gRPC. The stubborn retransmission loop, ACK tracking, and out-of-order delivery buffer are all implemented directly in `NetworkLayerLib`. The DH handshake runs inline over the same UDP socket before the first application message.
+
+## Test Suite
+
+46 tests across 14 test classes, organized by the protocol property they protect:
+
+### Safety
+
+**`SafeNodeTest`** (4 tests) exercises the `safeBlock` predicate directly, covering the null-lockedQC base case, the safety branch (block extends from lockedQC), the liveness branch (justify QC has a higher view), and the rejection case (neither branch satisfied). A regression here means a replica would vote for a block it should have rejected — allowing a Byzantine leader to collect 2f+1 votes for two conflicting blocks at the same height and fork the committed chain.
+
+### Byzantine Fault Tolerance
+
+**`QCManagerTest`** (6 tests) covers the QC aggregation and verification layer: duplicate vote rejection, invalid BLS partial signature in a prepare vote, invalid justify QC in a new-view message, and three flavors of malformed QC verification failure (no aggregated signature, fewer signers than quorum, wrong aggregated signature). A failure means a Byzantine replica can forge or weaken a QC and advance consensus without a legitimate quorum.
+
+**`PhasesTest`** (12 tests) covers each phase handler's input validation — null justify, wrong QC type, non-leader sender, and invalid aggregated signature — for each of the Prepare, Pre-Commit, and Commit phases. A failure means a Byzantine leader can push a replica into an incorrect phase state or cause it to accept a message that should have been rejected.
+
+### Liveness
+
+**`CatchUpTest`** (1 test) is an end-to-end two-node test: node 0 has blocks 1–4 in its store, node 1 has only blocks 1–2. Node 1 requests catch-up for block 4 from node 0, and the test verifies that node 1's store is updated with blocks 3 and 4, with correct parent-hash linkage. A failure means a lagging replica permanently diverges from the network.
+
+### EVM Correctness
+
+**`ISTCoinTest`** (6 tests) exercises the Solidity ERC-20 contract: initial supply allocation (50/50 split between the two clients), successful transfer, transfer with insufficient balance (must revert), approve + transferFrom with allowance tracking, transferFrom with insufficient allowance (must revert), and the front-running protection (`approve(spender, newValue, expectedCurrentValue)` must revert when the current allowance doesn't match `expectedCurrentValue`). A contract logic failure means replicas produce different storage states for the same transaction list and disagree on the block hash, breaking consensus.
+
+**`TransactionExecutionTest`** (5 tests) covers core EVM accounting: native DepCoin transfer with exact gas deduction, invalid nonce rejection, insufficient balance rejection (when value + max gas cost exceeds balance), contract call with actual gas deduction, and sequential nonce enforcement across multiple transactions in a single block. A failure breaks the determinism guarantee: two replicas applying the same transaction list to the same initial state would produce different world states.
+
+### Replay and Double-Spend Prevention
+
+**`ReplayAttackTest`** (2 tests) covers same-nonce replay (a transaction resubmitted with the same nonce is rejected because the EVM has already incremented the sender's nonce) and old-transaction replay (a transaction with a nonce consumed several blocks prior fails the nonce check). A failure means an attacker can drain accounts by replaying previously signed transactions.
+
+**`DoubleSpendTest`** (1 test) puts two transactions from the same sender in a single block: the first sends 80% of the balance at higher gas price, the second tries to send another 80% at lower gas price. After ordering by gas price, the second transaction executes against the post-first-transaction balance and fails. A failure means a sender can exceed their balance within a single consensus round.
+
+### Cryptographic Integrity
+
+**`TransactionSignatureTest`** (2 tests) verifies RSA signature checking: a valid signature from the correct client is accepted; a signature made with client 1's key but claiming to be from client 0's address is rejected, because the server derives the expected signer address from the `senderPort` field and compares it against the `from` field. A failure allows any node to forge transactions on behalf of any other account.
+
+**`CryptoLibTest`** (1 test) verifies that `verifyHmac` returns false when the payload has been tampered with after the HMAC was computed. A failure means the network layer accepts unauthenticated messages, breaking the authenticated perfect link guarantee.
+
+### Block Management
+
+**`BlockStorePruneTest`** (2 tests) verifies pruning behavior: orphan blocks from the genesis are removed while the main chain is retained (test 1), and competing fork branches from an intermediate block are removed after locking to a different branch (test 2). In both cases `pruneToLockedSubtree` must return a count of exactly 2 pruned blocks and leave the main chain intact. A failure causes either unbounded memory growth or, in the worse case, a pruned-then-readmitted block re-entering the tree with broken ancestry, which the safety argument doesn't cover.
+
+**`GenesisBlockTest`** (1 test) verifies genesis block structure: block number 0, null parent hash, one deployment transaction, four accounts in the initial world state (admin, ISTCoin contract, client 0, client 1), ISTCoin deployed as a contract at the expected address, and both client nonces at 0. A failure means replicas start from divergent world states, from which consensus cannot recover.
+
+### Gas and Resource Limits
+
+**`InvalidGasTest`** (2 tests) covers gas limit enforcement: a transaction submitted with a gasLimit of 100 (below the 21,000 minimum for a native transfer) fails with `executionSuccess = false` while still consuming gas; and `orderTransactionsForBlock` returns transactions sorted by gas price descending. Incorrect gas handling causes two replicas to include different transaction sets and produce different block hashes.
+
+**`NegativeBalanceTest`** (1 test) sets a client's balance to 50,000 and submits a contract call with a gasLimit of 100,000. Since `totalGasCost = gasPrice * gasLimit > balance`, the transaction fails and the final balance remains non-negative. A failure allows gas charges to push a sender's balance below zero, creating DepCoin from nothing.
 
 ## Getting Started
 
-**Prerequisites:** Java 11+, Maven 3.6+, OpenSSL, `solc` (Solidity compiler, Cancun-compatible)
+**Prerequisites**: Java 11+, Maven 3.6+, OpenSSL, `solc` (Cancun-compatible)
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/luca-dallalana/DepChain.git
-cd DepChain
-
-# 2. Generate RSA key pairs for N replicas and C clients
-./pki.sh N C
-
-# 3. Generate BLS threshold signature keys for N replicas
-cd utils && mvn exec:java -Dexec.mainClass=crypto.BLSKeys -Dexec.args="N"
-cd ..
-
-# 4. Build all modules
-mvn package -DskipTests
-
-# 5. Start N replicas (one per terminal)
-cd server && mvn exec:java -Dexec.args="<id> <N>"   # id = 0, 1, ..., N-1
-
-# 6. Start C clients (one per terminal)
-cd app && mvn exec:java -Dexec.args="<id> <N>"      # id = 0, 1, ..., C-1
-```
-
-## Usage
-
-### Run with 4 replicas and 3 clients
-
-```bash
-# Key generation
+# Generate RSA key pairs for 4 replicas and 3 clients
 ./pki.sh 4 3
+
+# Generate BLS aggregate signature keys for 4 replicas
 cd utils && mvn exec:java -Dexec.mainClass=crypto.BLSKeys -Dexec.args="4" && cd ..
 
-# Start 4 replicas (4 separate terminals)
+# Build all modules
+mvn package -DskipTests
+
+# Start 4 replicas — one per terminal (id = 0..3)
 cd server && mvn exec:java -Dexec.args="0 4"
 cd server && mvn exec:java -Dexec.args="1 4"
 cd server && mvn exec:java -Dexec.args="2 4"
 cd server && mvn exec:java -Dexec.args="3 4"
 
-# Start 3 clients (3 separate terminals)
+# Start 3 clients — one per terminal (id = 0..2)
 cd app && mvn exec:java -Dexec.args="0 4"
 cd app && mvn exec:java -Dexec.args="1 4"
 cd app && mvn exec:java -Dexec.args="2 4"
+
+# Run all 46 tests
+mvn test
 ```
 
-### Client Commands
-
-Once a client is running, it accepts interactive commands:
-
-```
-0 - DepCoin Transfer (native)       Transfer native currency between accounts
-1 - ISTCoin Transfer (contract)     Transfer ERC-20 tokens via smart contract
-2 - Set Allowance                   Approve a spender to transfer tokens on your behalf
-3 - TransferFrom                    Transfer tokens using an existing allowance
-4 - Get DepCoin Balance             Query native currency balance
-5 - Get ISTCoin Balance             Query ERC-20 token balance
-6 - Get Allowance                   Query an approved spending allowance
-7 - Exit                            Disconnect client
-```
-
-### Run Tests
-
-```bash
-mvn test  # Runs all 46 tests
-```
-
-## Test Suite (46 Tests)
-
-### Consensus Tests
-
-**QCManagerTest** (6 tests)
-- `testAddVoteRejectsDuplicateSender` — Prevents double voting from same replica
-- `testAddVoteRejectsInvalidPartialSignature` — Rejects votes with invalid BLS signatures
-- `testAddVoteRejectsInvalidJustifyQC` — Rejects new-view votes with invalid prepareQC
-- `testQCWithNoSignature` — Rejects QCs without aggregated signature
-- `testQCWithWrongNumberOfSigners` — Rejects QCs with insufficient quorum (< 2f+1)
-- `testQCWithWrongSignature` — Rejects QCs with forged aggregated signature
-
-**PhasesTest** (12 tests)
-- `testHandlePrepareReplicaRejects*` — Validates prepare phase message rejection (WrongTypeQC, InvalidSender, InvalidJustifyQC, NullJustify, InvalidSignature)
-- `testHandlePreCommitReplicaRejects*` — Validates pre-commit phase message rejection (WrongTypeQC, NullJustify, InvalidSender, InvalidJustifyQC)
-- `testHandleCommitReplicaRejects*` — Validates commit phase message rejection (WrongTypeQC, NullJustify, InvalidSender, InvalidJustifyQC)
-
-**SafeNodeTest** (4 tests)
-- `testSafeNode_LockedQCNull_ExtendsFrom` — Allows voting when no lockedQC exists and node extends from justify
-- `testSafeNode_LockedQCNotNull_ExtendsFrom` — Allows voting when node extends from lockedQC (safety)
-- `testSafeNode_LockedQCNotNull_HigherView` — Allows voting when justify view > lockedQC view (liveness)
-- `testSafeNode_LockedQCNotNull_FalseCase` — Rejects voting when conditions not met
-
-**CatchUpTest** (1 test)
-- `testCatchUpEndToEndBetweenTwoNodes` — Validates catch-up mechanism for syncing lagging replicas
-
-### Blockchain Tests
-
-**ISTCoinTest** (6 tests)
-- `testDeploymentAndInitialAllocation` — Verifies total supply and initial balance distribution (50/50 split)
-- `testTransfer` — Tests successful ERC-20 token transfer between accounts
-- `testTransferInsufficientBalance` — Rejects transfer attempts exceeding sender's balance
-- `testApproveAndTransferFrom` — Tests approve and transferFrom workflow with allowance tracking
-- `testTransferFromInsufficientAllowance` — Rejects transferFrom when allowance is insufficient
-- `testFrontrunningProtection` — Validates expectedCurrentValue protection against approve/transferFrom race conditions
-
-**TransactionExecutionTest** (5 tests)
-- `testNativeDepCoinTransfer` — Verifies native currency transfers with gas deduction
-- `testInvalidNonce` — Rejects transactions with invalid nonce
-- `testInsufficientBalance` — Rejects transactions exceeding balance (including gas)
-- `testContractCallWithGas` — Verifies contract calls with gas deduction
-- `testMultipleTransactionsWithNonceSequence` — Tests sequential nonce enforcement
-
-**ReplayAttackTest** (2 tests)
-- `testSameNonceReplayBlocked` — Prevents replay of transactions with same nonce
-- `testOldTransactionReplayBlocked` — Rejects transactions with old nonces
-
-**DoubleSpendTest** (1 test)
-- `testSameBlockDoubleSpend` — Prevents double-spending when multiple transactions from same sender are in same block
-
-**InvalidGasTest** (2 tests)
-- `testGasLimitExceeded` — Rejects transactions with insufficient gas
-- `testGasParametersInBlockOrdering` — Validates gas-price-based transaction ordering
-
-**NegativeBalanceTest** (1 test)
-- `testContractCallCausesNegativeBalance` — Prevents negative balances when contract calls exceed available balance
-
-**TransactionSignatureTest** (2 tests)
-- `testValidSignatureAccepted` — Accepts valid RSA signatures
-- `testWrongSenderAddressWithValidSignature` — Rejects transactions with mismatched sender addresses
-
-**GenesisBlockTest** (1 test)
-- `testGenesisCreation` — Validates genesis block structure and initial account setup
-
-**BlockStorePruneTest** (2 tests)
-- `testPruneKeepsRecentBlocks` — Retains blocks in main chain while removing orphan blocks
-- `testPruneRemovesOldBlocks` — Removes alternative fork blocks after pruning to locked QC
-
-### Cryptography Tests
-
-**CryptoLibTest** (1 test)
-- `testHmacIntegrityFail` — Detects message tampering via HMAC verification
-
-## What I Learned / Challenges
-
-The hardest part was wiring together the safety and liveness properties of the BFT protocol correctly. The `safeBlock` rule has two branches — a block is safe if it extends from the `lockedQC` node (safety) *or* if its justifying QC has a higher view number than the locked one (liveness) — and getting the interaction between view changes, catch-up, and block-tree pruning right required careful state management. I also learned a lot about how Ethereum-style transaction execution actually works: nonces increment even on failed transactions, and max gas cost must be reserved upfront, which prevents several attack vectors that are easy to miss when building a naive implementation.
-
-## Group 18
-
-- 106147 Diogo Rodrigues
-- 106378 Luca Dallalana
-- 107157 Inês Alves
+Client commands: `0` DepCoin transfer · `1` ISTCoin transfer · `2` set allowance · `3` transferFrom · `4` get DepCoin balance · `5` get ISTCoin balance · `6` get allowance · `7` exit
