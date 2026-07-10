@@ -51,7 +51,7 @@ public class EVMHelper {
     }
 
     private EVMExecutor createExecutor() {
-        var executor = EVMExecutor.evm(EvmSpecVersion.CANCUN);
+        var executor = EVMExecutor.evm(EvmSpecVersion.PRAGUE);
         executor.tracer(tracer);
         executor.worldUpdater(world.updater());
         executor.commitWorldState();
@@ -98,8 +98,7 @@ public class EVMHelper {
         // Extract gas used
         long gasUsed = extractGasUsedFromTrace();
 
-        // Check for success: must have RETURN and no REVERT REDUNDANT VERIFICATION
-        if (hasOpcode("REVERT", "253", "INVALID", "254") || !hasOpcode("RETURN", "243")) {
+        if (hasOpcode("REVERT", "253", "INVALID", "254") || (!hasOpcode("RETURN", "243") && !hasOpcode("STOP", "0"))) {
             return new ExecutionResult(false, Bytes.EMPTY, gasUsed);
         }
 
