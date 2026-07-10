@@ -106,10 +106,11 @@
                                 <argument>--bin</argument>
                                 <argument>--overwrite</argument>
                                 <argument>--evm-version</argument>
-                                <argument>cancun</argument>
+                                <argument>prague</argument>
                                 <argument>-o</argument>
                                 <argument>bytecode/</argument>
                                 <argument>ISTCoin.sol</argument>
+                                <argument>SlashingContract.sol</argument>
                             </arguments>
                         </configuration>
                     </execution>

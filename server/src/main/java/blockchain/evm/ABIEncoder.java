@@ -4,8 +4,10 @@ import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import org.web3j.abi.FunctionEncoder;
 import org.web3j.abi.datatypes.DynamicArray;
+import org.web3j.abi.datatypes.DynamicBytes;
 import org.web3j.abi.datatypes.Function;
 import org.web3j.abi.datatypes.Type;
+import org.web3j.abi.datatypes.generated.Bytes32;
 import org.web3j.abi.datatypes.generated.Uint256;
 
 import java.math.BigInteger;
@@ -70,5 +72,35 @@ public class ABIEncoder {
 
     public static Bytes encodeTotalSupply() {
         return encodeFunctionCall("totalSupply", Collections.emptyList());
+    }
+
+    public static Bytes encodeDeposit(BigInteger validatorId, BigInteger amount) {
+        return encodeFunctionCall("deposit", Arrays.asList(
+            new Uint256(validatorId),
+            new Uint256(amount)
+        ));
+    }
+
+    public static Bytes encodeSlash(
+            BigInteger validatorId,
+            BigInteger viewA, byte[] blockHashA, byte[] sigA,
+            BigInteger viewB, byte[] blockHashB, byte[] sigB) {
+        return encodeFunctionCall("slash", Arrays.asList(
+            new Uint256(validatorId),
+            new Uint256(viewA),
+            new Bytes32(blockHashA),
+            new DynamicBytes(sigA),
+            new Uint256(viewB),
+            new Bytes32(blockHashB),
+            new DynamicBytes(sigB)
+        ));
+    }
+
+    public static Bytes encodeGetStake(BigInteger validatorId) {
+        return encodeFunctionCall("getStake", Arrays.asList(new Uint256(validatorId)));
+    }
+
+    public static Bytes encodeIsSlashed(BigInteger validatorId) {
+        return encodeFunctionCall("isSlashed", Arrays.asList(new Uint256(validatorId)));
     }
 }
