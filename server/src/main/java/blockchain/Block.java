@@ -8,8 +8,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,6 +28,7 @@ import crypto.CryptoLib;
 public class Block {
     public static final String ACCESS_CONTROL_ADDRESS = "0x1234567891234567891234567891234567891234";
     public static final String IST_COIN_ADDRESS = "0x5555555555555555555555555555555555555555";
+    public static final String SLASHING_CONTRACT_ADDRESS = "0x7777777777777777777777777777777777777777";
     public static final String ADMIN_ADDRESS = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     public String blockHash;            // Block hash (hex)
@@ -118,8 +121,9 @@ public class Block {
             evm.createAccount(client0HexAddress, Wei.of(1000000));
             evm.createAccount(client1HexAddress, Wei.of(1000000));
 
-            // 3. Load contract bytecode
+            // 3. Load contract bytecodes
             String istCoinBytecode = BytecodeLoader.loadBytecode("ISTCoin");
+            String slashingBytecode = BytecodeLoader.loadBytecode("SlashingContract");
 
             // 4. Deploy ISTCoin contract manually (genesis-only setup, admin deploys)
             Address istAddress = Address.fromHexString(IST_COIN_ADDRESS);
@@ -137,28 +141,52 @@ public class Block {
                 throw new RuntimeException("Failed to deploy ISTCoin contract");
             }
 
-            // 5. Create deployment transaction (for record-keeping in genesis block)
+            // Deploy SlashingContract
+            Address slashingAddress = Address.fromHexString(SLASHING_CONTRACT_ADDRESS);
+            Bytes slashingDeploymentCode = Bytes.fromHexString(slashingBytecode);
+            boolean slashingDeployed = evm.deployContract(
+                adminAddress,
+                slashingAddress,
+                slashingDeploymentCode
+            );
+            if (!slashingDeployed) {
+                throw new RuntimeException("Failed to deploy SlashingContract");
+            }
+
+            // 5. Create deployment transactions (for record-keeping in genesis block)
             List<Transaction> transactions = new ArrayList<>();
             transactions.add(new Transaction(
                 -1,
                 adminAddress,
-                null,  // Contract deployment
-                0,     // No value transfer
+                null,
+                0,
                 istDeploymentCode.toArray(),
-                10000000,  // Gas limit
-                0,         // Gas price (free for genesis)
-                0,         // Nonce
-                null       // No signature (trusted genesis)
+                10000000,
+                0,
+                0,
+                null
+            ));
+            transactions.add(new Transaction(
+                -1,
+                adminAddress,
+                null,
+                0,
+                slashingDeploymentCode.toArray(),
+                10000000,
+                0,
+                0,
+                null
             ));
 
-            // 6. Extract final state from EVM after manual deployment
+            // 6. Extract final state from EVM after manual deployments
             WorldState finalState = new WorldState();
-            Set<String> trackedAddresses = Set.of(
+            Set<String> trackedAddresses = new HashSet<>(Arrays.asList(
                 ADMIN_ADDRESS,
                 client0Addr,
                 client1Addr,
-                IST_COIN_ADDRESS
-            );
+                IST_COIN_ADDRESS,
+                SLASHING_CONTRACT_ADDRESS
+            ));
 
             for (String addrStr : trackedAddresses) {
                 Address addr = Address.fromHexString(addrStr);
@@ -181,6 +209,7 @@ public class Block {
             }
 
             System.out.println("ISTCoin deployed at: " + IST_COIN_ADDRESS);
+            System.out.println("SlashingContract deployed at: " + SLASHING_CONTRACT_ADDRESS);
             System.out.println("Genesis state contains " + finalState.accounts.size() + " accounts");
 
             // 7. Create genesis block (without hash initially)

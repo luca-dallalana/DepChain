@@ -152,7 +152,12 @@ public class QCManager {
         return type + ":" + viewNumber;
     }
 
-    private byte[] computeMessageHash(String type, int viewNumber, String blockHash) throws Exception {
+    public boolean verifyPartialSignatureFor(String type, int viewNumber, String blockHash, byte[] sig, int senderId) throws Exception {
+        byte[] messageHash = computeMessageHash(type, viewNumber, blockHash);
+        return signatureService.verifyPartialSignature(sig, messageHash, senderId);
+    }
+
+    public byte[] computeMessageHash(String type, int viewNumber, String blockHash) throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         baos.write(type.getBytes(StandardCharsets.UTF_8));
         baos.write(ByteBuffer.allocate(4).putInt(viewNumber).array());

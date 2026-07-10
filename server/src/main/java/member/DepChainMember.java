@@ -2,21 +2,25 @@ package member;
 
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.gson.Gson;
 
+import blockchain.Account;
 import blockchain.Block;
 import blockchain.BlockStore;
 import blockchain.BlockchainMember;
 import blockchain.GetAllowance;
 import blockchain.GetBalance;
+import blockchain.SlashingClient;
 import blockchain.Transaction;
 import blockchain.TransactionResponse;
 import config.MemberConfig;
+import consensus.EquivocationDetector;
 import consensus.QCManager;
 import crypto.CryptoLib;
 import info.ReplicaInfo;
@@ -30,7 +34,6 @@ import network.UdpReceiver;
 import util.DepChainUtil;
 import util.DepChainUtil.MaxQCInfo;
 import org.hyperledger.besu.datatypes.Address;
-import blockchain.Account;
 
 public class DepChainMember implements DeliveryListener{
     private NetworkLayerLib networkLayerLib;
@@ -51,8 +54,12 @@ public class DepChainMember implements DeliveryListener{
     private Block lastExecutedBlock; // Track last executed block
     private int timeoutCount = 1; // Track number of timeouts for exponential backoff
 
-    private static final long PHASE_TIMEOUT_MS = 8000;  
+    private static final long PHASE_TIMEOUT_MS = 8000;
     private Thread timeoutThread;
+
+    private final EquivocationDetector equivocationDetector;
+    private final List<Transaction> pendingSlashTxs;
+    private int byzantineAtView = -1;
 
     public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
         this.memberConfig = memberConfig;
@@ -69,7 +76,12 @@ public class DepChainMember implements DeliveryListener{
         this.qcManager = new QCManager(memberConfig);
         this.util = new DepChainUtil(qcManager);
         this.pendingPreparedBlocks = new ConcurrentHashMap<>();
+        this.equivocationDetector = new EquivocationDetector();
+        this.pendingSlashTxs = Collections.synchronizedList(new ArrayList<>());
+    }
 
+    public void setByzantineAtView(int view) {
+        this.byzantineAtView = view;
     }
 
 
@@ -278,7 +290,16 @@ public class DepChainMember implements DeliveryListener{
                 break;
             case "prepare":
                 if (memberConfig.isLeader(curView)) {
-                    if (qcManager.addVote(m)) {
+                    Message conflicting = equivocationDetector.check(m);
+                    if (conflicting != null) {
+                        int validatorId = m.senderPort - 3000;
+                        Account adminAccount = lastExecutedBlock.state.getAccount(Address.fromHexString(Block.ADMIN_ADDRESS));
+                        Transaction slashTx = SlashingClient.buildSlashingTransaction(
+                            validatorId, conflicting, m,
+                            Address.fromHexString(Block.ADMIN_ADDRESS), (int) adminAccount.nonce_count
+                        );
+                        pendingSlashTxs.add(slashTx);
+                    } else if (qcManager.addVote(m)) {
                         handlePreCommitLeader();
                         startTimeout(); // pre-commit phase
                     }
@@ -367,9 +388,15 @@ public class DepChainMember implements DeliveryListener{
                 return;
             }
 
-            new Thread(() -> { //this is done so the thread that is listening can keep receiving messages while we do the block building that can be blocking for a period of time
+            new Thread(() -> {
                 try {
-                    Block curProposal = BlockchainMember.buildBlockForProposal(maxQCBlock, memberConfig.getPendingTransactions());
+                    List<Transaction> allTxs;
+                    synchronized (pendingSlashTxs) {
+                        allTxs = new ArrayList<>(pendingSlashTxs);
+                        pendingSlashTxs.clear();
+                    }
+                    allTxs.addAll(memberConfig.getPendingTransactions());
+                    Block curProposal = BlockchainMember.buildBlockForProposal(maxQCBlock, allTxs);
             
                     this.currentProposal = curProposal; // Store for QC formation
 
@@ -398,14 +425,23 @@ public class DepChainMember implements DeliveryListener{
                 return;
             }
             for (Transaction tx : m.transactions) {
+                if (tx.senderPort == -1) {
+                    if (!verifySlashingTxProof(tx)) {
+                        System.err.println("Invalid slashing transaction in proposed block, proposing new view");
+                        proposeNewView();
+                        return;
+                    }
+                    continue;
+                }
+
                 int senderId = tx.senderPort - 4000;
                 String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
-    
-                Transaction unsignedTx = new Transaction(tx.senderPort, tx.from, tx.to, tx.value, tx.data, tx.gasLimit, tx.gasPrice, tx.nonce_count, null); // create a transaction object without the signature for verification
+
+                Transaction unsignedTx = new Transaction(tx.senderPort, tx.from, tx.to, tx.value, tx.data, tx.gasLimit, tx.gasPrice, tx.nonce_count, null);
                 byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
-    
+
                 try {
-                    if(!CryptoLib.verifySignature(transactionBytes, tx.signature, PUBLIC_KEY_PATH)){ 
+                    if(!CryptoLib.verifySignature(transactionBytes, tx.signature, PUBLIC_KEY_PATH)){
                         System.err.println("Invalid signature for client transaction in block, proposing new view");
                         proposeNewView();
                         return;
@@ -416,7 +452,8 @@ public class DepChainMember implements DeliveryListener{
                         return;
                     }
                 } catch (Exception e) {
-                    System.err.println("Error verifying signature for client command: " + e.getMessage());
+                    System.err.println("Invalid signature for client transaction in block, proposing new view");
+                    proposeNewView();
                     return;
                 }
             }
@@ -457,7 +494,6 @@ public class DepChainMember implements DeliveryListener{
             }
 
             if (blockStore.extendsFrom(proposedBlock, m.justify.blockHash) && safeBlock(proposedBlock, m.justify)) {
-                // Keep the validated proposal so we can reference it in pre-commit without rebuilding
                 pendingPreparedBlocks.put(proposedBlock.blockHash, proposedBlock);
                 startTimeout();
                 Message voteMsg = util.voteMsg("prepare", null, m.blockHash, null, curView);
@@ -466,6 +502,16 @@ public class DepChainMember implements DeliveryListener{
                 int leader = memberConfig.getLeader(curView);
                 ReplicaInfo replica = memberConfig.getReplicaInfo(leader);
                 sendMessage(voteMsg, replica.getIP(), replica.getPort());
+
+                if (byzantineAtView >= 0 && curView == byzantineAtView) {
+                    String realHash = m.blockHash;
+                    String fakeBlockHash = "0x" + String.format("%02x",
+                        Integer.parseInt(realHash.substring(2, 4), 16) ^ 0xFF) + realHash.substring(4);
+                    Message fakeVote = util.voteMsg("prepare", null, fakeBlockHash, null, curView);
+                    fakeVote.senderPort = memberConfig.getID() + 3000;
+                    sendMessage(fakeVote, replica.getIP(), replica.getPort());
+                    byzantineAtView = -1;
+                }
             } else {
                 System.err.println("block failed safety check in prepare message");
             }
@@ -727,6 +773,7 @@ public class DepChainMember implements DeliveryListener{
     private void proposeNewView() {
         stopTimeout();
         curView++;
+        equivocationDetector.clear(curView);
         System.out.println("Proposing new view: " + curView);
         Message newViewMsg = DepChainUtil.Msg("new-view", null, null ,prepareQC, curView); 
         newViewMsg.senderPort = memberConfig.getID() + 3000;
@@ -887,6 +934,13 @@ public class DepChainMember implements DeliveryListener{
         } catch (IOException e) {
             System.err.println("Error sending GetAllowance response: " + e.getMessage());
         }
+    }
+
+    private boolean verifySlashingTxProof(Transaction tx) {
+        return tx.to != null
+            && tx.to.toHexString().equalsIgnoreCase(Block.SLASHING_CONTRACT_ADDRESS)
+            && tx.data != null
+            && tx.data.length > 4;
     }
 
     private void sendTransactionResponse(Transaction tx) {

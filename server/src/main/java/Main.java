@@ -31,6 +31,13 @@ public class Main {
             int port = 3000 + thisID;
             DatagramSocket socket = new DatagramSocket(port);
             DepChainMember member = new DepChainMember(config, socket);
+
+            for (int i = 2; i < args.length - 1; i++) {
+                if ("--byzantine-at-view".equals(args[i])) {
+                    member.setByzantineAtView(Integer.parseInt(args[i + 1]));
+                }
+            }
+
             member.start();
 
         } catch (Exception e) {
