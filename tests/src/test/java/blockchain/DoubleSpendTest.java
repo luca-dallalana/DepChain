@@ -55,7 +55,8 @@ public class DoubleSpendTest {
             amountToSend,
             new byte[0],
             21000L,
-            2L,  // Higher gas price - will execute first
+            2L,
+            0L,
             0,
             null
         );
@@ -69,14 +70,14 @@ public class DoubleSpendTest {
             amountToSend,
             new byte[0],
             21000L,
-            1L,  // Lower gas price - will execute second
+            1L,
+            0L,
             1,
             null
         );
         transactions.add(tx2);
 
-        // Execute transactions in same block (ordered by gas price)
-        WorldState finalState = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState);
+        WorldState finalState = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState, 1L);
 
         // First transaction should succeed (highest gas price)
         assertTrue(tx1.getExecutionSuccess(), "First transaction (higher gas price) should SUCCEED");
@@ -87,9 +88,7 @@ public class DoubleSpendTest {
         // Verify Client0 balance
         if (finalState.hasAccount(client0)) {
             Account client0Final = finalState.getAccount(client0);
-            // tx2 fails VALIDATION (insufficient balance), so no gas is deducted
-            // Only tx1 deducts: value (800,000) + gas (21,000 * 2 = 42,000) = 842,000
-            long expectedBalance = client0InitialBalance - amountToSend - (21000 * 2);
+            long expectedBalance = client0InitialBalance - amountToSend - 21000;
             assertEquals(expectedBalance, client0Final.balance, "Client0 balance should reflect only the first transaction and gas costs");
         }
 

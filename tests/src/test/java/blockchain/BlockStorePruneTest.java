@@ -41,13 +41,14 @@ public class BlockStorePruneTest {
     }
 
     private Transaction createTransaction(Address from, Address to, long value) {
-        return new Transaction(-1, from, to, value, new byte[0], 21000, 1, 0, null);
+        return new Transaction(-1, from, to, value, new byte[0], 21000, 1, 0, 0, null);
     }
 
     private Block buildBlock(Block parent, List<Transaction> transactions) throws Exception {
         EVMHelper evm = new EVMHelper();
-        WorldState newState = BlockchainMember.computeState(evm, transactions, parent.state);
-        return Block.createLeaf(parent, transactions, newState);
+        WorldState newState = BlockchainMember.computeState(evm, transactions, parent.state, parent.baseFeePerGas);
+        long totalGasUsed = transactions.stream().mapToLong(t -> t.gasUsed).sum();
+        return Block.createLeaf(parent, transactions, newState, parent.baseFeePerGas, totalGasUsed);
     }
 
     @Test

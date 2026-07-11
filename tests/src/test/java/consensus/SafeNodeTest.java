@@ -46,7 +46,7 @@ public class SafeNodeTest {
     // Test: When lockedQC is null, safeBlock should return true if block extends from qc.blockHash.
     @Test
     public void testSafeBlock_LockedQCNull_ExtendsFrom() throws Exception {
-        Block child = Block.createLeaf(genesis, new ArrayList<>(), new WorldState());
+        Block child = Block.createLeaf(genesis, new ArrayList<>(), new WorldState(), 1L, 0L);
         storeBlock(member, child);
         QC qc = new QC("prepare", 0, genesis.blockHash, null);
 
@@ -58,7 +58,7 @@ public class SafeNodeTest {
     // Test: When lockedQC is set, safeBlock should return true if block extends from lockedQC.blockHash.
     @Test
     public void testSafeBlock_LockedQCNotNull_ExtendsFrom() throws Exception {
-        Block child = Block.createLeaf(genesis, new ArrayList<>(), new WorldState());
+        Block child = Block.createLeaf(genesis, new ArrayList<>(), new WorldState(), 1L, 0L);
         storeBlock(member, child);
         QC lockedQC = new QC("pre-commit", 0, genesis.blockHash, null);
         QC qc = new QC("prepare", 0, genesis.blockHash, null);
@@ -72,7 +72,7 @@ public class SafeNodeTest {
     // Test: When lockedQC is set, safeBlock should return true if qc.viewNumber > lockedQC.viewNumber.
     @Test
     public void testSafeBlock_LockedQCNotNull_HigherView() throws Exception {
-        Block unrelated = new Block(null, null, new ArrayList<>(), new WorldState(), 10);
+        Block unrelated = new Block(null, null, new ArrayList<>(), new WorldState(), 10, 1L, 0L);
         unrelated.blockHash = unrelated.depHash();
         storeBlock(member, unrelated);
 
@@ -88,7 +88,7 @@ public class SafeNodeTest {
     // Test: When lockedQC is set, safeBlock should return false if it does not extend and view is not higher.
     @Test
     public void testSafeBlock_LockedQCNotNull_FalseCase() throws Exception {
-        Block unrelated = new Block(null, null, new ArrayList<>(), new WorldState(), 20);
+        Block unrelated = new Block(null, null, new ArrayList<>(), new WorldState(), 20, 1L, 0L);
         unrelated.blockHash = unrelated.depHash();
         storeBlock(member, unrelated);
 
@@ -102,7 +102,7 @@ public class SafeNodeTest {
     }
 
     private Block initializeBlockStore(DepChainMember member) throws Exception {
-        Block first = new Block(null, null, new ArrayList<>(), new WorldState(), 0);
+        Block first = new Block(null, null, new ArrayList<>(), new WorldState(), 0, 1L, 0L);
         BlockStore store = new BlockStore(first);
 
         java.lang.reflect.Field field = DepChainMember.class.getDeclaredField("blockStore");

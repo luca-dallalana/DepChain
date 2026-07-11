@@ -52,7 +52,7 @@ public class PhasesTest {
     @Test
     public void testHandlePrepareReplicaRejectsInvalidSignature() throws Exception {
         byte[] fakeSig = new byte[256];
-        Transaction tx = new Transaction(4001, null, null, 1, new byte[0], 21000, 1, 1, fakeSig);
+        Transaction tx = new Transaction(4001, null, null, 1, new byte[0], 21000, 1, 0, 1, fakeSig);
 
         Message m = new Message();
         m.type = "prepare";

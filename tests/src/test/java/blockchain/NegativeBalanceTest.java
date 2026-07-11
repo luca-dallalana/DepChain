@@ -58,17 +58,17 @@ public class NegativeBalanceTest {
             4000,
             client0,
             istCoinAddress,
-            0L,  // No DepCoin value transfer
+            0L,
             callData.toArray(),
             excessiveGasLimit,
             gasPrice,
+            0L,
             0,
             null
         );
         transactions.add(tx);
 
-        // Execute transaction
-        WorldState finalState = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState);
+        WorldState finalState = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState, 1L);
 
         if (totalGasCost > lowBalance) {
             // Should fail if gas cost exceeds balance

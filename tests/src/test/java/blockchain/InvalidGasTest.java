@@ -45,15 +45,15 @@ public class InvalidGasTest {
             client1,
             1000L,
             new byte[0],
-            100L,  // Insufficient gas limit (needs 21,000)
+            100L,
             1L,
+            0L,
             0,
             null
         );
         transactions.add(tx);
 
-        // Execute transaction
-        WorldState finalState = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState);
+        WorldState finalState = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState, 1L);
 
         long client0InitialBalance = genesisState.getAccount(client0).balance;
         long client0FinalBalance = finalState.getAccount(client0).balance;
@@ -70,25 +70,22 @@ public class InvalidGasTest {
 
         List<Transaction> transactions = new ArrayList<>();
 
-        // Create 3 transactions with different gas prices from DIFFERENT senders
-        // NOTE: Same sender's transactions must maintain nonce order, so we need different senders
-        Transaction tx1 = new Transaction(4000, client0, client1, 100L, new byte[0], 21000L, 1L, 0, null);
-        Transaction tx2 = new Transaction(4001, client1, client0, 100L, new byte[0], 21000L, 5L, 0, null);
-        Transaction tx3 = new Transaction(4002, client2, client0, 100L, new byte[0], 21000L, 3L, 0, null);
+        // Three transactions from different senders with different tips (maxPriorityFeePerGas)
+        Transaction tx1 = new Transaction(4000, client0, client1, 100L, new byte[0], 21000L, 5L, 1L, 0, null);
+        Transaction tx2 = new Transaction(4001, client1, client0, 100L, new byte[0], 21000L, 5L, 5L, 0, null);
+        Transaction tx3 = new Transaction(4002, client2, client0, 100L, new byte[0], 21000L, 5L, 3L, 0, null);
 
         transactions.add(tx1);
         transactions.add(tx2);
         transactions.add(tx3);
 
+        List<Transaction> orderedTxs = BlockchainMember.orderTransactionsForBlock(new ArrayList<>(transactions), 1L);
 
-        // Order transactions by gas price (simulates block building)
-        List<Transaction> orderedTxs = BlockchainMember.orderTransactionsForBlock(new ArrayList<>(transactions));
-
-        // Verify ordering (highest gas price first)
-        assertTrue(orderedTxs.get(0).getGasPrice() >= orderedTxs.get(1).getGasPrice(),
-                  "First tx should have higher or equal gas price than second");
-        assertTrue(orderedTxs.get(1).getGasPrice() >= orderedTxs.get(2).getGasPrice(),
-                  "Second tx should have higher or equal gas price than third");
+        // Verify ordering by tip (highest maxPriorityFeePerGas first)
+        assertTrue(orderedTxs.get(0).getMaxPriorityFeePerGas() >= orderedTxs.get(1).getMaxPriorityFeePerGas(),
+                  "First tx should have higher or equal tip than second");
+        assertTrue(orderedTxs.get(1).getMaxPriorityFeePerGas() >= orderedTxs.get(2).getMaxPriorityFeePerGas(),
+                  "Second tx should have higher or equal tip than third");
 
     }
 }

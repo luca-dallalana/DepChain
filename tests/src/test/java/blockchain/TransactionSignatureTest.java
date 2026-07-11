@@ -54,6 +54,7 @@ public class TransactionSignatureTest {
             new byte[0],
             21000L,
             1L,
+            0L,
             0,
             null
         );
@@ -63,8 +64,8 @@ public class TransactionSignatureTest {
         tx.signature = signature;
 
         Transaction unsignedTx = new Transaction(tx.senderPort, tx.from, tx.to, tx.value,
-                                                 tx.data, tx.gasLimit, tx.gasPrice,
-                                                 tx.nonce_count, null);
+                                                 tx.data, tx.gasLimit, tx.maxFeePerGas,
+                                                 tx.maxPriorityFeePerGas, tx.nonce_count, null);
         byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
 
         boolean isValid = CryptoLib.verifySignature(transactionBytes, signature, client0PublicKeyPath);
@@ -76,13 +77,14 @@ public class TransactionSignatureTest {
     public void testWrongSenderAddressWithValidSignature() throws Exception {
         // Malicious Client1 creates transaction claiming to be from Client0
         Transaction tx = new Transaction(
-            4001,  // Client1's port (Byzantine attacker)
-            client0Address,  // Claims to be from Client0 (victim)
-            client1Address,  // Sending to themselves
+            4001,
+            client0Address,
+            client1Address,
             1000L,
             new byte[0],
             21000L,
             1L,
+            0L,
             0,
             null
         );
@@ -98,8 +100,8 @@ public class TransactionSignatureTest {
 
         // Server verifies signature using Client1's public key (from port)
         Transaction unsignedTx = new Transaction(tx.senderPort, tx.from, tx.to, tx.value,
-                                                 tx.data, tx.gasLimit, tx.gasPrice,
-                                                 tx.nonce_count, null);
+                                                 tx.data, tx.gasLimit, tx.maxFeePerGas,
+                                                 tx.maxPriorityFeePerGas, tx.nonce_count, null);
         byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
 
         boolean isValid = CryptoLib.verifySignature(transactionBytes, signature, publicKeyPath);

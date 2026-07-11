@@ -47,7 +47,7 @@ public class CatchUpTest {
         node0 = new DepChainMember(config0, socket0);
         node1 = new DepChainMember(config1, socket1);
 
-        Block genesis = new Block(null, null, new ArrayList<>(), new WorldState(), 0);
+        Block genesis = new Block(null, null, new ArrayList<>(), new WorldState(), 0, 1L, 0L);
         genesis.blockHash = genesis.depHash();
 
         store0 = new BlockStore(genesis);

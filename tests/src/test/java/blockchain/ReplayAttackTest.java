@@ -48,12 +48,13 @@ public class ReplayAttackTest {
             new byte[0],
             21000L,
             1L,
-            0,  // nonce = 0
+            0L,
+            0,
             null
         );
         transactions.add(tx1);
 
-        WorldState afterBlock1 = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState);
+        WorldState afterBlock1 = BlockchainMember.computeState(new EVMHelper(), transactions, genesisState, 1L);
 
         assertTrue(tx1.getExecutionSuccess(), "Original transaction should succeed");
         assertEquals(1, afterBlock1.getAccount(client0).nonce_count, "Client0 nonce should be 1");
@@ -65,18 +66,19 @@ public class ReplayAttackTest {
             4000,
             client0,
             client1,
-            1000L,  // Same amount
+            1000L,
             new byte[0],
             21000L,
             1L,
-            0,  // SAME nonce = 0 (REPLAY ATTACK)
+            0L,
+            0,
             null
         );
 
         List<Transaction> replayBlock = new ArrayList<>();
         replayBlock.add(replayTx);
 
-        WorldState afterReplay = BlockchainMember.computeState(new EVMHelper(), replayBlock, afterBlock1);
+        WorldState afterReplay = BlockchainMember.computeState(new EVMHelper(), replayBlock, afterBlock1, 1L);
 
         assertFalse(replayTx.getExecutionSuccess(), "Replay transaction should FAIL");
 
@@ -97,15 +99,16 @@ public class ReplayAttackTest {
                 4000,
                 client0,
                 client1,
-                100L,  // Send 100 each time
+                100L,
                 new byte[0],
                 21000L,
                 1L,
-                i,  // nonce increments
+                0L,
+                i,
                 null
             );
             txList.add(tx);
-            currentState = BlockchainMember.computeState(new EVMHelper(), txList, currentState);
+            currentState = BlockchainMember.computeState(new EVMHelper(), txList, currentState, 1L);
             assertTrue(tx.getExecutionSuccess(), "Transaction " + i + " should succeed");
         }
 
@@ -120,14 +123,15 @@ public class ReplayAttackTest {
             new byte[0],
             21000L,
             1L,
-            2,  // Old nonce from 3 blocks ago (REPLAY ATTACK)
+            0L,
+            2,
             null
         );
 
         List<Transaction> replayBlock = new ArrayList<>();
         replayBlock.add(replayOld);
 
-        WorldState afterReplay = BlockchainMember.computeState(new EVMHelper(), replayBlock, currentState);
+        WorldState afterReplay = BlockchainMember.computeState(new EVMHelper(), replayBlock, currentState, 1L);
 
         // Should fail because nonce 2 < lastExecutedNonce 4
         assertFalse(replayOld.getExecutionSuccess(), "Old replay should FAIL");

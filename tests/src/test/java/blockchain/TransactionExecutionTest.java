@@ -65,16 +65,16 @@ public class TransactionExecutionTest {
             client0,
             client1,
             transferAmount,
-            new byte[0],  // Empty data = native transfer
+            new byte[0],
             gasLimit,
             gasPrice,
-            0,  // nonce
+            0,
+            0,
             null
         );
         transactions.add(tx);
 
-        // Execute transaction
-        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
+        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState, 1L);
 
         // Verify balances
         Account client0Final = finalState.getAccount(client0);
@@ -114,13 +114,13 @@ public class TransactionExecutionTest {
             new byte[0],
             21000,
             1,
-            5,  // Wrong nonce!
+            0,
+            5,
             null
         );
         transactions.add(tx);
 
-        // Execute should not throw exception, but mark transaction as failed
-        WorldState resultState = BlockchainMember.computeState(evm, transactions, genesisState);
+        WorldState resultState = BlockchainMember.computeState(evm, transactions, genesisState, 1L);
 
         // Verify transaction was marked as failed
         assertNotNull(resultState, "State should be returned even with invalid transaction");
@@ -144,17 +144,17 @@ public class TransactionExecutionTest {
             -1,
             client0,
             client1,
-            client0Balance,  // Send entire balance, but won't have enough for gas!
+            client0Balance,
             new byte[0],
             21000,
             1,
+            0,
             0,
             null
         );
         transactions.add(tx);
 
-        // Execute should not throw exception, but mark transaction as failed
-        WorldState resultState = BlockchainMember.computeState(evm, transactions, genesisState);
+        WorldState resultState = BlockchainMember.computeState(evm, transactions, genesisState, 1L);
 
         // Verify transaction was marked as failed
         assertNotNull(resultState, "State should be returned even with invalid transaction");
@@ -182,10 +182,11 @@ public class TransactionExecutionTest {
             -1,
             client0,
             istCoinAddress,
-            0,  // No DepCoin transfer
+            0,
             callData.toArray(),
             gasLimit,
             gasPrice,
+            0,
             0,
             null
         );
@@ -193,8 +194,7 @@ public class TransactionExecutionTest {
 
         long client0InitialBalance = genesisState.getAccount(client0).balance;
 
-        // Execute transaction
-        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
+        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState, 1L);
 
         // Verify gas was deducted based on actual gas used (not necessarily full gas limit)
         Account client0Final = finalState.getAccount(client0);
@@ -227,11 +227,12 @@ public class TransactionExecutionTest {
                 -1,
                 client0,
                 client1,
-                100,  // Send 100 DepCoin each time
+                100,
                 new byte[0],
                 21000,
                 1,
-                i,  // Nonce sequence
+                0,
+                i,
                 null
             );
             transactions.add(tx);
@@ -241,7 +242,7 @@ public class TransactionExecutionTest {
         long client1InitialBalance = genesisState.getAccount(client1).balance;
 
         // Execute all transactions
-        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState);
+        WorldState finalState = BlockchainMember.computeState(evm, transactions, genesisState, 1L);
 
         // Verify results
         Account client0Final = finalState.getAccount(client0);
