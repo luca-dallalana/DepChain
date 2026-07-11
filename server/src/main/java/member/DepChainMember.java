@@ -228,7 +228,7 @@ public class DepChainMember implements DeliveryListener{
                 return;
             }
 
-            if (request.gasLimit <= 0 || request.gasPrice <= 0) {
+            if (request.gasLimit <= 0 || request.maxFeePerGas <= 0) {
                 System.err.println("Invalid gas limit or gas price in client command, ignoring"); 
                 return;
             }
@@ -241,7 +241,7 @@ public class DepChainMember implements DeliveryListener{
             int senderId = senderPort - 4000;
             String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
 
-            Transaction unsignedTx = new Transaction(request.senderPort, request.from, request.to, request.value, request.data, request.gasLimit, request.gasPrice, request.nonce_count, null); // create a transaction object without the signature for verification
+            Transaction unsignedTx = new Transaction(request.senderPort, request.from, request.to, request.value, request.data, request.gasLimit, request.maxFeePerGas, request.maxPriorityFeePerGas, request.nonce_count, null);
             byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
 
             try {
@@ -254,7 +254,7 @@ public class DepChainMember implements DeliveryListener{
                 return;
             }
 
-            System.out.println("Received new command: " + request.from + " -> " + request.to + " value: " + request.value + " gasLimit: " + request.gasLimit + " gasPrice: " + request.gasPrice + " seq: " + request.nonce_count);
+            System.out.println("Received new command: " + request.from + " -> " + request.to + " value: " + request.value + " gasLimit: " + request.gasLimit + " maxFeePerGas: " + request.maxFeePerGas + " seq: " + request.nonce_count);
 
 
             memberConfig.addPendingTransaction(request);
@@ -437,7 +437,7 @@ public class DepChainMember implements DeliveryListener{
                 int senderId = tx.senderPort - 4000;
                 String PUBLIC_KEY_PATH = "../rsa_keys/client_" + senderId + "/client_" + senderId + ".pubkey";
 
-                Transaction unsignedTx = new Transaction(tx.senderPort, tx.from, tx.to, tx.value, tx.data, tx.gasLimit, tx.gasPrice, tx.nonce_count, null);
+                Transaction unsignedTx = new Transaction(tx.senderPort, tx.from, tx.to, tx.value, tx.data, tx.gasLimit, tx.maxFeePerGas, tx.maxPriorityFeePerGas, tx.nonce_count, null);
                 byte[] transactionBytes = GsonUtils.GSON.toJson(unsignedTx).getBytes();
 
                 try {

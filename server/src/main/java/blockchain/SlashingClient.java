@@ -29,6 +29,7 @@ public class SlashingClient {
             callData.toArray(),
             200000,
             1,
+            0,
             senderNonce,
             null
         );

@@ -21,8 +21,15 @@ import blockchain.evm.EVMHelper;
 public class BlockchainMember {
 
     private static final long BLOCK_GAS_LIMIT = 210000;
+    private static final long BLOCK_GAS_TARGET = BLOCK_GAS_LIMIT / 2;
     private static final long BLOCK_BUILD_TIMEOUT_MS = 5000;
     private static final long BUILD_POLL_INTERVAL_MS = 100;
+
+    static long computeBaseFee(long parentBaseFee, long parentGasUsed) {
+        long delta = parentGasUsed - BLOCK_GAS_TARGET;
+        long newFee = parentBaseFee + (parentBaseFee * delta) / (BLOCK_GAS_TARGET * 8);
+        return Math.max(1L, newFee);
+    }
 
     // Consensus calls this when a block is decided
     public static Block executeBlock(Block block, BlockStore blockStore, Block lastExecutedBlock) {
@@ -56,18 +63,22 @@ public class BlockchainMember {
 
     // Consensus calls this to get the next block to propose
     public static Block buildBlock(Block parent, List<Transaction> pendingTxs) throws Exception {
-        List<Transaction> orderedTxs = orderTransactionsForBlock(pendingTxs);
+        long baseFee = computeBaseFee(parent.baseFeePerGas, parent.totalGasUsed);
+        List<Transaction> orderedTxs = orderTransactionsForBlock(pendingTxs, baseFee);
         EVMHelper evm = new EVMHelper();
-        WorldState newState = computeState(evm, orderedTxs, parent.state);
-        return Block.createLeaf(parent, orderedTxs, newState);
+        WorldState newState = computeState(evm, orderedTxs, parent.state, baseFee);
+        long totalGasUsed = orderedTxs.stream().mapToLong(t -> t.gasUsed).sum();
+        return Block.createLeaf(parent, orderedTxs, newState, baseFee, totalGasUsed);
     }
 
     // Leader path: wait up to timeout, but stop early when block gas cap is reached.
     public static Block buildBlockForProposal(Block parent, List<Transaction> pendingTxs) throws Exception {
-        List<Transaction> orderedTxs = waitAndOrderTransactionsForBlock(pendingTxs);
+        long baseFee = computeBaseFee(parent.baseFeePerGas, parent.totalGasUsed);
+        List<Transaction> orderedTxs = waitAndOrderTransactionsForBlock(pendingTxs, baseFee);
         EVMHelper evm = new EVMHelper();
-        WorldState newState = computeState(evm, orderedTxs, parent.state);
-        return Block.createLeaf(parent, orderedTxs, newState);
+        WorldState newState = computeState(evm, orderedTxs, parent.state, baseFee);
+        long totalGasUsed = orderedTxs.stream().mapToLong(t -> t.gasUsed).sum();
+        return Block.createLeaf(parent, orderedTxs, newState, baseFee, totalGasUsed);
     }
 
     // Consensus calls this to validate a proposed block before voting
@@ -77,8 +88,14 @@ public class BlockchainMember {
             if (!block.parentBlockHash.equals(parent.depHash())) return false;
             if (block.blockNumber != parent.blockNumber + 1) return false;
 
+            long expectedBaseFee = computeBaseFee(parent.baseFeePerGas, parent.totalGasUsed);
+            if (block.baseFeePerGas != expectedBaseFee) return false;
+
             EVMHelper evm = new EVMHelper();
-            WorldState computedState = computeState(evm, block.transactions, parent.state);
+            WorldState computedState = computeState(evm, block.transactions, parent.state, block.baseFeePerGas);
+
+            long expectedGasUsed = block.transactions.stream().mapToLong(t -> t.gasUsed).sum();
+            if (block.totalGasUsed != expectedGasUsed) return false;
 
             if (!statesEqual(computedState, block.state)) return false;
 
@@ -114,10 +131,11 @@ public class BlockchainMember {
         return true;
     }
 
-    public static List<Transaction> orderTransactionsForBlock(List<Transaction> transactions) {
+    public static List<Transaction> orderTransactionsForBlock(List<Transaction> transactions, long baseFeePerGas) {
         Map<String, Queue<Transaction>> bySender = new HashMap<>();
 
         for (Transaction tx : transactions) {
+            if (tx.getMaxFeePerGas() < baseFeePerGas) continue;
             bySender.computeIfAbsent(tx.getFrom().toHexString(), k -> new LinkedList<>()).add(tx);
         }
 
@@ -130,12 +148,12 @@ public class BlockchainMember {
 
         while (!bySender.isEmpty()) {
             String bestSender = null;
-            long highestGasPrice = -1;
+            long highestTip = -1;
 
             for (Map.Entry<String, Queue<Transaction>> entry : bySender.entrySet()) {
-                long gasPrice = entry.getValue().peek().getGasPrice();
-                if (gasPrice > highestGasPrice) {
-                    highestGasPrice = gasPrice;
+                long tip = entry.getValue().peek().getMaxPriorityFeePerGas();
+                if (tip > highestTip) {
+                    highestTip = tip;
                     bestSender = entry.getKey();
                 }
             }
@@ -165,11 +183,11 @@ public class BlockchainMember {
         return ordered;
     }
 
-    private static List<Transaction> waitAndOrderTransactionsForBlock(List<Transaction> pendingTxs) {
+    private static List<Transaction> waitAndOrderTransactionsForBlock(List<Transaction> pendingTxs, long baseFeePerGas) {
         long deadline = System.currentTimeMillis() + BLOCK_BUILD_TIMEOUT_MS;
 
         while (System.currentTimeMillis() < deadline) {
-            List<Transaction> candidate = orderTransactionsForBlock(new ArrayList<>(pendingTxs));
+            List<Transaction> candidate = orderTransactionsForBlock(new ArrayList<>(pendingTxs), baseFeePerGas);
             if (totalGas(candidate) >= BLOCK_GAS_LIMIT) {
                 return candidate;
             }
@@ -182,7 +200,7 @@ public class BlockchainMember {
             }
         }
 
-        return orderTransactionsForBlock(new ArrayList<>(pendingTxs));
+        return orderTransactionsForBlock(new ArrayList<>(pendingTxs), baseFeePerGas);
     }
 
     private static long totalGas(List<Transaction> transactions) {
@@ -272,40 +290,38 @@ public class BlockchainMember {
         return finalState;
     }
 
-    public static WorldState computeState(EVMHelper evm, List<Transaction> transactions, WorldState initialState) {
+    public static WorldState computeState(EVMHelper evm, List<Transaction> transactions, WorldState initialState, long baseFeePerGas) {
         Set<Address> trackedAddresses = new HashSet<>();
 
-        // Step 1: Initialize EVM with previous state
         initializeEVM(evm, initialState);
-
-        // Track all existing addresses from initial state
         trackedAddresses.addAll(initialState.accounts.keySet());
 
-        // Step 2: Execute each transaction
         for (Transaction tx : transactions) {
             try {
                 if (tx.to == null) throw new RuntimeException("Contract deployment must be done in genesis setup, not via computeState()");
 
                 MutableAccount senderAccount = (MutableAccount) evm.world.get(tx.from);
                 if (senderAccount == null) throw new RuntimeException("Sender account does not exist");
-                if (tx.getGasPrice() <= 0 || tx.getGasLimit() <= 0) throw new RuntimeException("Gas price and limit must be positive");
+                if (tx.getMaxFeePerGas() <= 0 || tx.getGasLimit() <= 0) throw new RuntimeException("Gas price and limit must be positive");
+                if (tx.getMaxFeePerGas() < baseFeePerGas) throw new RuntimeException("maxFeePerGas below baseFee");
                 if (senderAccount.getNonce() != tx.getNonce()) throw new RuntimeException("Invalid nonce");
 
-                // Increment nonce immediately after validation - any transaction with valid nonce increments it
                 senderAccount.incrementNonce();
                 trackedAddresses.add(tx.from);
 
-                long maxCost = tx.getValue() + (tx.getGasPrice() * tx.getGasLimit());
+                long effectiveGasPrice = Math.min(tx.getMaxFeePerGas(), baseFeePerGas + tx.getMaxPriorityFeePerGas());
+                long maxCost = tx.getValue() + (effectiveGasPrice * tx.getGasLimit());
                 if (senderAccount.getBalance().toLong() < maxCost) throw new RuntimeException("Insufficient balance");
 
                 boolean isNativeTransfer = (tx.getData() == null || tx.getData().length == 0);
                 long gasUsed;
 
                 if (isNativeTransfer) {
-                    gasUsed = 21000; // Fixed gas cost for native transfer 
+                    gasUsed = 21000;
 
-                    if (gasUsed > tx.getMaxTransactionFee()) {
-                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));
+                    if (gasUsed > tx.getGasLimit()) {
+                        tx.gasUsed = tx.getGasLimit();
+                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(effectiveGasPrice * tx.getGasLimit())));
                         System.out.println("Native transfer failed due to insufficient gas limit");
                         tx.executionSuccess = false;
                         continue;
@@ -330,14 +346,16 @@ public class BlockchainMember {
                     gasUsed = result.getGasUsed();
 
                     if (gasUsed > tx.getGasLimit()) {
-                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * tx.getGasLimit())));
+                        tx.gasUsed = tx.getGasLimit();
+                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(effectiveGasPrice * tx.getGasLimit())));
                         System.out.println("Transaction failed due to lack of gas");
                         tx.executionSuccess = false;
                         continue;
                     }
 
                     if (!result.isSuccess()) {
-                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
+                        tx.gasUsed = gasUsed;
+                        senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(effectiveGasPrice * gasUsed)));
                         System.out.println("Contract call failed");
                         tx.executionSuccess = false;
                         continue;
@@ -345,7 +363,8 @@ public class BlockchainMember {
                     tx.executionSuccess = true;
                 }
 
-                senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(tx.getGasPrice() * gasUsed)));
+                tx.gasUsed = gasUsed;
+                senderAccount.setBalance(senderAccount.getBalance().subtract(Wei.of(effectiveGasPrice * gasUsed)));
                 trackedAddresses.add(tx.from);
                 trackedAddresses.add(tx.to);
             } catch (RuntimeException e) {
@@ -354,7 +373,6 @@ public class BlockchainMember {
             }
         }
 
-        // Step 3: Extract final state from EVM
         return extractState(evm, trackedAddresses);
     }
 }

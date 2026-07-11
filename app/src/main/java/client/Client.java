@@ -75,7 +75,8 @@ public class Client implements DeliveryListener{
                     Address toAddress = readAddressForClient(scanner, "Enter recipient client ID: ");
                     Long transferValue = readLong(scanner, "Enter value: ");
                     Long gasLimit = 21000L; // Fixed gas limit for native transfer
-                    Long gasPrice = 1L; // Fixed gas price for native transfer
+                    Long maxFeePerGas = 1L;
+                    Long maxPriorityFeePerGas = 0L;
                     Address fromAddress = config.getAccountAddress(config.getID());
 
                     Transaction DepCoinTransferRequest = new Transaction(
@@ -85,7 +86,8 @@ public class Client implements DeliveryListener{
                         transferValue,
                         null,
                         gasLimit,
-                        gasPrice,
+                        maxFeePerGas,
+                        maxPriorityFeePerGas,
                         transactionNonce++,
                         null
                     );
@@ -101,7 +103,8 @@ public class Client implements DeliveryListener{
                     Address recipientAddress = readAddressForClient(scanner, "Enter recipient client ID: ");
                     Long istValue = readLong(scanner, "Enter value: ");
                     Long istGasLimit = readLong(scanner, "Enter gasLimit: ");
-                    Long istGasPrice = readLong(scanner, "Enter gasPrice: ");
+                    Long istMaxFeePerGas = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long istMaxPriorityFeePerGas = readLong(scanner, "Enter maxPriorityFeePerGas: ");
                     Address senderAddress = config.getAccountAddress(config.getID());
                     Bytes transferData = ABIEncoder.encodeTransfer(recipientAddress, BigInteger.valueOf(istValue));
 
@@ -112,7 +115,8 @@ public class Client implements DeliveryListener{
                         0L,
                         transferData.toArray(),
                         istGasLimit,
-                        istGasPrice,
+                        istMaxFeePerGas,
+                        istMaxPriorityFeePerGas,
                         transactionNonce++,
                         null
                     );
@@ -129,7 +133,8 @@ public class Client implements DeliveryListener{
                     Long newAllowance = readLongAllowZero(scanner, "Enter new allowance value: ");
                     Long expectedCurrentAllowance = readLongAllowZero(scanner, "Enter expected current allowance value: ");
                     Long allowanceGasLimit = readLong(scanner, "Enter gasLimit: ");
-                    Long allowanceGasPrice = readLong(scanner, "Enter gasPrice: ");
+                    Long allowanceMaxFeePerGas = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long allowanceMaxPriorityFeePerGas = readLong(scanner, "Enter maxPriorityFeePerGas: ");
                     Address ownerAddress = config.getAccountAddress(config.getID());
 
                     Bytes allowanceData = ABIEncoder.encodeApprove(
@@ -145,7 +150,8 @@ public class Client implements DeliveryListener{
                         0L,
                         allowanceData.toArray(),
                         allowanceGasLimit,
-                        allowanceGasPrice,
+                        allowanceMaxFeePerGas,
+                        allowanceMaxPriorityFeePerGas,
                         transactionNonce++,
                         null
                     );
@@ -162,7 +168,8 @@ public class Client implements DeliveryListener{
                     Address toTfAddress = readAddressForClient(scanner, "Enter recipient client ID: ");
                     Long transferFromValue = readLong(scanner, "Enter value: ");
                     Long gasLimitTF = readLong(scanner, "Enter gasLimit: ");
-                    Long gasPriceTF = readLong(scanner, "Enter gasPrice: ");
+                    Long maxFeePerGasTF = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long maxPriorityFeePerGasTF = readLong(scanner, "Enter maxPriorityFeePerGas: ");
                     Address spenderAddr = config.getAccountAddress(config.getID());
                     Bytes transferFromData = ABIEncoder.encodeTransferFrom(fromAddr, toTfAddress, BigInteger.valueOf(transferFromValue));
 
@@ -173,7 +180,8 @@ public class Client implements DeliveryListener{
                         0L,
                         transferFromData.toArray(),
                         gasLimitTF,
-                        gasPriceTF,
+                        maxFeePerGasTF,
+                        maxPriorityFeePerGasTF,
                         transactionNonce++,
                         null
                     );
