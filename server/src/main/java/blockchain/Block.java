@@ -31,25 +31,31 @@ public class Block {
     public static final String SLASHING_CONTRACT_ADDRESS = "0x7777777777777777777777777777777777777777";
     public static final String ADMIN_ADDRESS = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-    public String blockHash;            // Block hash (hex)
-    public String parentBlockHash;    // Previous block (null for genesis)
+    public String blockHash;
+    public String parentBlockHash;
     public List<Transaction> transactions;
-    public WorldState state;            // World state after executing txs
-    public long blockNumber;            // Height in blockchain
+    public WorldState state;
+    public long blockNumber;
+    public long baseFeePerGas;
+    public long totalGasUsed;
 
     public Block(String blockHash, String parentBlockHash,
                 List<Transaction> transactions, WorldState state,
-                long blockNumber) {
+                long blockNumber, long baseFeePerGas, long totalGasUsed) {
         this.blockHash = blockHash;
         this.parentBlockHash = parentBlockHash;
         this.transactions = transactions != null ? transactions : new ArrayList<>();
         this.state = state;
         this.blockNumber = blockNumber;
+        this.baseFeePerGas = baseFeePerGas;
+        this.totalGasUsed = totalGasUsed;
     }
 
     public Block() {
         this.transactions = new ArrayList<>();
         this.state = new WorldState();
+        this.baseFeePerGas = 1;
+        this.totalGasUsed = 0;
     }
 
     public boolean isGenesisBlock() {
@@ -72,7 +78,8 @@ public class Block {
                 writeString(baos, tx.to != null ? tx.to.toHexString() : null);
                 writeLong(baos, tx.value);
                 writeLong(baos, tx.gasLimit);
-                writeLong(baos, tx.gasPrice);
+                writeLong(baos, tx.maxFeePerGas);
+                writeLong(baos, tx.maxPriorityFeePerGas);
                 writeInt(baos, tx.nonce_count);
                 writeBytes(baos, tx.data);
                 writeBytes(baos, tx.signature);
@@ -80,13 +87,15 @@ public class Block {
         }
 
         writeWorldState(baos, state);
+        writeLong(baos, baseFeePerGas);
+        writeLong(baos, totalGasUsed);
 
         byte[] hash = CryptoLib.hash(baos.toByteArray());
         return "0x" + AddressUtils.bytesToHex(hash);
     }
 
-    public static Block createLeaf(Block parent, List<Transaction> transactions, WorldState state)
-            throws Exception {
+    public static Block createLeaf(Block parent, List<Transaction> transactions, WorldState state,
+                                   long baseFeePerGas, long totalGasUsed) throws Exception {
         if (parent == null) {
             throw new IllegalArgumentException("Parent block cannot be null");
         }
@@ -96,7 +105,9 @@ public class Block {
             parent.blockHash,
             transactions,
             state,
-            parent.blockNumber + 1
+            parent.blockNumber + 1,
+            baseFeePerGas,
+            totalGasUsed
         );
         leaf.blockHash = leaf.depHash();
         return leaf;
@@ -156,26 +167,12 @@ public class Block {
             // 5. Create deployment transactions (for record-keeping in genesis block)
             List<Transaction> transactions = new ArrayList<>();
             transactions.add(new Transaction(
-                -1,
-                adminAddress,
-                null,
-                0,
-                istDeploymentCode.toArray(),
-                10000000,
-                0,
-                0,
-                null
+                -1, adminAddress, null, 0, istDeploymentCode.toArray(),
+                10000000, 0, 0, 0, null
             ));
             transactions.add(new Transaction(
-                -1,
-                adminAddress,
-                null,
-                0,
-                slashingDeploymentCode.toArray(),
-                10000000,
-                0,
-                0,
-                null
+                -1, adminAddress, null, 0, slashingDeploymentCode.toArray(),
+                10000000, 0, 0, 0, null
             ));
 
             // 6. Extract final state from EVM after manual deployments
@@ -214,11 +211,13 @@ public class Block {
 
             // 7. Create genesis block (without hash initially)
             Block genesis = new Block(
-                null,          // blockHash - compute later
-                null,          // parentBlockHash
+                null,
+                null,
                 transactions,
                 finalState,
-                0              // blockNumber
+                0,
+                1,  // baseFeePerGas
+                0   // totalGasUsed
             );
 
             // 8. Compute block hash
