@@ -111,6 +111,8 @@
                                 <argument>bytecode/</argument>
                                 <argument>ISTCoin.sol</argument>
                                 <argument>SlashingContract.sol</argument>
+                                <argument>DepToken.sol</argument>
+                                <argument>AMM.sol</argument>
                             </arguments>
                         </configuration>
                     </execution>
