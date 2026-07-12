@@ -157,4 +157,35 @@ public class ABIEncoder {
     public static Bytes encodeGetLiquidityOf(Address provider) {
         return encodeFunctionCall("getLiquidityOf", Arrays.asList(toWeb3jAddress(provider)));
     }
+
+    public static Bytes encodeOracleConstructor(Address admin) {
+        String encoded = FunctionEncoder.encodeConstructor(
+            Arrays.asList(toWeb3jAddress(admin))
+        );
+        return Bytes.fromHexString(encoded);
+    }
+
+    public static Bytes encodeUpdatePrice(byte[] key, BigInteger price, BigInteger timestamp) {
+        return encodeFunctionCall("updatePrice", Arrays.asList(
+            new Bytes32(key),
+            new Uint256(price),
+            new Uint256(timestamp)
+        ));
+    }
+
+    public static Bytes encodeGetPrice(byte[] key) {
+        return encodeFunctionCall("getPrice", Arrays.asList(new Bytes32(key)));
+    }
+
+    public static Bytes encodeAddReporter(Address reporter) {
+        return encodeFunctionCall("addReporter", Arrays.asList(toWeb3jAddress(reporter)));
+    }
+
+    public static Bytes encodeRemoveReporter(Address reporter) {
+        return encodeFunctionCall("removeReporter", Arrays.asList(toWeb3jAddress(reporter)));
+    }
+
+    public static Bytes encodeIsReporter(Address account) {
+        return encodeFunctionCall("isReporter", Arrays.asList(toWeb3jAddress(account)));
+    }
 }

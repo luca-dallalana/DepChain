@@ -31,6 +31,7 @@ public class Block {
     public static final String DEP_TOKEN_ADDRESS = "0x6666666666666666666666666666666666666666";
     public static final String SLASHING_CONTRACT_ADDRESS = "0x7777777777777777777777777777777777777777";
     public static final String AMM_ADDRESS = "0x8888888888888888888888888888888888888888";
+    public static final String ORACLE_ADDRESS = "0x9999999999999999999999999999999999999999";
     public static final String ADMIN_ADDRESS = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     public String blockHash;
@@ -139,6 +140,7 @@ public class Block {
             String slashingBytecode = BytecodeLoader.loadBytecode("SlashingContract");
             String depTokenBytecode = BytecodeLoader.loadBytecode("DepToken");
             String ammBytecode = BytecodeLoader.loadBytecode("AMM");
+            String oracleBytecode = BytecodeLoader.loadBytecode("PriceOracle");
 
             // 4. Deploy ISTCoin contract manually (genesis-only setup, admin deploys)
             Address istAddress = Address.fromHexString(IST_COIN_ADDRESS);
@@ -200,6 +202,22 @@ public class Block {
                 throw new RuntimeException("Failed to deploy AMM contract");
             }
 
+            // Deploy PriceOracle
+            Address oracleContractAddress = Address.fromHexString(ORACLE_ADDRESS);
+            Bytes oracleConstructorParams = ABIEncoder.encodeOracleConstructor(adminAddress);
+            Bytes oracleDeploymentCode = Bytes.concatenate(
+                Bytes.fromHexString(oracleBytecode),
+                oracleConstructorParams
+            );
+            boolean oracleDeployed = evm.deployContract(
+                adminAddress,
+                oracleContractAddress,
+                oracleDeploymentCode
+            );
+            if (!oracleDeployed) {
+                throw new RuntimeException("Failed to deploy PriceOracle contract");
+            }
+
             // 5. Create deployment transactions (for record-keeping in genesis block)
             List<Transaction> transactions = new ArrayList<>();
             transactions.add(new Transaction(
@@ -218,6 +236,10 @@ public class Block {
                 -1, adminAddress, null, 0, ammDeploymentCode.toArray(),
                 10000000, 0, 0, 0, null
             ));
+            transactions.add(new Transaction(
+                -1, adminAddress, null, 0, oracleDeploymentCode.toArray(),
+                10000000, 0, 0, 0, null
+            ));
 
             // 6. Extract final state from EVM after manual deployments
             WorldState finalState = new WorldState();
@@ -228,7 +250,8 @@ public class Block {
                 IST_COIN_ADDRESS,
                 SLASHING_CONTRACT_ADDRESS,
                 DEP_TOKEN_ADDRESS,
-                AMM_ADDRESS
+                AMM_ADDRESS,
+                ORACLE_ADDRESS
             ));
 
             for (String addrStr : trackedAddresses) {
@@ -255,6 +278,7 @@ public class Block {
             System.out.println("SlashingContract deployed at: " + SLASHING_CONTRACT_ADDRESS);
             System.out.println("DepToken deployed at: " + DEP_TOKEN_ADDRESS);
             System.out.println("AMM deployed at: " + AMM_ADDRESS);
+            System.out.println("PriceOracle deployed at: " + ORACLE_ADDRESS);
             System.out.println("Genesis state contains " + finalState.accounts.size() + " accounts");
 
             // 7. Create genesis block (without hash initially)
