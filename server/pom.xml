@@ -114,6 +114,7 @@
                                 <argument>DepToken.sol</argument>
                                 <argument>AMM.sol</argument>
                                 <argument>PriceOracle.sol</argument>
+                                <argument>Multisig.sol</argument>
                             </arguments>
                         </configuration>
                     </execution>
