@@ -39,10 +39,10 @@ public class GenesisBlockTest {
         assertTrue(genesis.isGenesisBlock(), "Should be identified as genesis block");
 
         // Verify transactions
-        assertEquals(5, genesis.transactions.size(), "Genesis should have 5 deployment transactions");
+        assertEquals(6, genesis.transactions.size(), "Genesis should have 6 deployment transactions");
 
-        // Verify state (admin + 2 clients + 5 contracts)
-        assertEquals(8, genesis.state.accounts.size(), "Genesis state should have 8 accounts");
+        // Verify state (admin + 2 clients + 6 contracts)
+        assertEquals(9, genesis.state.accounts.size(), "Genesis state should have 9 accounts");
 
         // Verify admin account exists (used for deploying contracts in genesis)
         Address adminAddress = Address.fromHexString(Block.ADMIN_ADDRESS);
@@ -62,6 +62,13 @@ public class GenesisBlockTest {
         blockchain.Account oracleAccount = genesis.state.getAccount(oracleAddress);
         assertNotNull(oracleAccount, "PriceOracle account should not be null");
         assertTrue(oracleAccount.isContract(), "PriceOracle should be a contract");
+
+        // Verify Multisig contract exists
+        Address multisigAddress = Address.fromHexString(Block.MULTISIG_ADDRESS);
+        assertTrue(genesis.state.hasAccount(multisigAddress), "Multisig contract should exist");
+        blockchain.Account multisigAccount = genesis.state.getAccount(multisigAddress);
+        assertNotNull(multisigAccount, "Multisig account should not be null");
+        assertTrue(multisigAccount.isContract(), "Multisig should be a contract");
 
         // Verify ISTCoin contract is identified correctly
         blockchain.Account istAccount = genesis.state.getAccount(istCoinAddress);
