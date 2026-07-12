@@ -67,6 +67,9 @@ public class Client implements DeliveryListener{
         System.out.println("  11 - Remove Liquidity");
         System.out.println("  12 - Swap IST -> DEP");
         System.out.println("  13 - Swap DEP -> IST");
+        System.out.println("  --- Oracle ---");
+        System.out.println("  14 - Update Price");
+        System.out.println("  15 - Get Price");
         System.out.println("===============================\n");
 
         Scanner scanner = new Scanner(System.in);
@@ -373,8 +376,56 @@ public class Client implements DeliveryListener{
                     }
                     break;
                 }
+                case "14": {
+                    Address oracleUpdateSender = config.getAccountAddress(config.getID());
+                    System.out.print("Enter price key (max 32 chars, e.g. IST/DEP): ");
+                    String keyStr = scanner.nextLine().trim();
+                    byte[] keyBytes = java.util.Arrays.copyOf(keyStr.getBytes(java.nio.charset.StandardCharsets.UTF_8), 32);
+                    Long oraclePrice = readLong(scanner, "Enter price: ");
+                    Long oracleTimestamp = readLong(scanner, "Enter timestamp (unix seconds): ");
+                    Long oracleUpdateGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long oracleUpdateMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long oracleUpdateMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes oracleUpdateData = ABIEncoder.encodeUpdatePrice(
+                        keyBytes,
+                        BigInteger.valueOf(oraclePrice),
+                        BigInteger.valueOf(oracleTimestamp)
+                    );
+                    Transaction oracleUpdateTx = new Transaction(
+                        config.getPort(), oracleUpdateSender,
+                        Address.fromHexString(Block.ORACLE_ADDRESS), 0L,
+                        oracleUpdateData.toArray(),
+                        oracleUpdateGasLimit, oracleUpdateMaxFee, oracleUpdateMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(oracleUpdateTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
+                case "15": {
+                    Address oracleGetSender = config.getAccountAddress(config.getID());
+                    System.out.print("Enter price key (max 32 chars, e.g. IST/DEP): ");
+                    String getPriceKeyStr = scanner.nextLine().trim();
+                    byte[] getPriceKeyBytes = java.util.Arrays.copyOf(getPriceKeyStr.getBytes(java.nio.charset.StandardCharsets.UTF_8), 32);
+                    Long oracleGetGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long oracleGetMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long oracleGetMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes oracleGetData = ABIEncoder.encodeGetPrice(getPriceKeyBytes);
+                    Transaction oracleGetTx = new Transaction(
+                        config.getPort(), oracleGetSender,
+                        Address.fromHexString(Block.ORACLE_ADDRESS), 0L,
+                        oracleGetData.toArray(),
+                        oracleGetGasLimit, oracleGetMaxFee, oracleGetMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(oracleGetTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
                 default:
-                    System.out.println("Unknown command. Try 0-6 for token operations, 7 (Exit), or 8-13 for AMM operations.");
+                    System.out.println("Unknown command. Try 0-6 for token operations, 7 (Exit), 8-13 for AMM operations, or 14-15 for Oracle.");
             }
         }
     }
