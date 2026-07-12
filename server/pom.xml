@@ -113,6 +113,7 @@
                                 <argument>SlashingContract.sol</argument>
                                 <argument>DepToken.sol</argument>
                                 <argument>AMM.sol</argument>
+                                <argument>PriceOracle.sol</argument>
                             </arguments>
                         </configuration>
                     </execution>
