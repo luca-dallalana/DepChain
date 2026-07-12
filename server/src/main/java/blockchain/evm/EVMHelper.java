@@ -106,13 +106,16 @@ public class EVMHelper {
     }
 
     public BigInteger extractUint256FromReturnData() {
+        return extractUint256FromReturnData(0);
+    }
+
+    public BigInteger extractUint256FromReturnData(int wordOffset) {
         Bytes data = extractReturnDataFromTrace();
-        if (data == null || data.isEmpty() || data.size() < 32) {
+        int start = wordOffset * 32;
+        if (data == null || data.size() < start + 32) {
             return BigInteger.ZERO;
         }
-        // Take first 32 bytes and convert to BigInteger
-        String hexString = data.slice(0, Math.min(32, data.size())).toHexString();
-        // Remove "0x" prefix if present
+        String hexString = data.slice(start, 32).toHexString();
         if (hexString.startsWith("0x")) {
             hexString = hexString.substring(2);
         }

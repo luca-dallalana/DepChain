@@ -28,7 +28,9 @@ import crypto.CryptoLib;
 public class Block {
     public static final String ACCESS_CONTROL_ADDRESS = "0x1234567891234567891234567891234567891234";
     public static final String IST_COIN_ADDRESS = "0x5555555555555555555555555555555555555555";
+    public static final String DEP_TOKEN_ADDRESS = "0x6666666666666666666666666666666666666666";
     public static final String SLASHING_CONTRACT_ADDRESS = "0x7777777777777777777777777777777777777777";
+    public static final String AMM_ADDRESS = "0x8888888888888888888888888888888888888888";
     public static final String ADMIN_ADDRESS = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     public String blockHash;
@@ -135,6 +137,8 @@ public class Block {
             // 3. Load contract bytecodes
             String istCoinBytecode = BytecodeLoader.loadBytecode("ISTCoin");
             String slashingBytecode = BytecodeLoader.loadBytecode("SlashingContract");
+            String depTokenBytecode = BytecodeLoader.loadBytecode("DepToken");
+            String ammBytecode = BytecodeLoader.loadBytecode("AMM");
 
             // 4. Deploy ISTCoin contract manually (genesis-only setup, admin deploys)
             Address istAddress = Address.fromHexString(IST_COIN_ADDRESS);
@@ -164,6 +168,38 @@ public class Block {
                 throw new RuntimeException("Failed to deploy SlashingContract");
             }
 
+            // Deploy DepToken
+            Address depTokenAddress = Address.fromHexString(DEP_TOKEN_ADDRESS);
+            Bytes depTokenConstructorParams = ABIEncoder.encodeDepTokenConstructor(client0HexAddress, client1HexAddress);
+            Bytes depTokenDeploymentCode = Bytes.concatenate(
+                Bytes.fromHexString(depTokenBytecode),
+                depTokenConstructorParams
+            );
+            boolean depTokenDeployed = evm.deployContract(
+                adminAddress,
+                depTokenAddress,
+                depTokenDeploymentCode
+            );
+            if (!depTokenDeployed) {
+                throw new RuntimeException("Failed to deploy DepToken contract");
+            }
+
+            // Deploy AMM
+            Address ammContractAddress = Address.fromHexString(AMM_ADDRESS);
+            Bytes ammConstructorParams = ABIEncoder.encodeAMMConstructor(istAddress, depTokenAddress);
+            Bytes ammDeploymentCode = Bytes.concatenate(
+                Bytes.fromHexString(ammBytecode),
+                ammConstructorParams
+            );
+            boolean ammDeployed = evm.deployContract(
+                adminAddress,
+                ammContractAddress,
+                ammDeploymentCode
+            );
+            if (!ammDeployed) {
+                throw new RuntimeException("Failed to deploy AMM contract");
+            }
+
             // 5. Create deployment transactions (for record-keeping in genesis block)
             List<Transaction> transactions = new ArrayList<>();
             transactions.add(new Transaction(
@@ -174,6 +210,14 @@ public class Block {
                 -1, adminAddress, null, 0, slashingDeploymentCode.toArray(),
                 10000000, 0, 0, 0, null
             ));
+            transactions.add(new Transaction(
+                -1, adminAddress, null, 0, depTokenDeploymentCode.toArray(),
+                10000000, 0, 0, 0, null
+            ));
+            transactions.add(new Transaction(
+                -1, adminAddress, null, 0, ammDeploymentCode.toArray(),
+                10000000, 0, 0, 0, null
+            ));
 
             // 6. Extract final state from EVM after manual deployments
             WorldState finalState = new WorldState();
@@ -182,7 +226,9 @@ public class Block {
                 client0Addr,
                 client1Addr,
                 IST_COIN_ADDRESS,
-                SLASHING_CONTRACT_ADDRESS
+                SLASHING_CONTRACT_ADDRESS,
+                DEP_TOKEN_ADDRESS,
+                AMM_ADDRESS
             ));
 
             for (String addrStr : trackedAddresses) {
@@ -207,6 +253,8 @@ public class Block {
 
             System.out.println("ISTCoin deployed at: " + IST_COIN_ADDRESS);
             System.out.println("SlashingContract deployed at: " + SLASHING_CONTRACT_ADDRESS);
+            System.out.println("DepToken deployed at: " + DEP_TOKEN_ADDRESS);
+            System.out.println("AMM deployed at: " + AMM_ADDRESS);
             System.out.println("Genesis state contains " + finalState.accounts.size() + " accounts");
 
             // 7. Create genesis block (without hash initially)

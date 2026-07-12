@@ -103,4 +103,58 @@ public class ABIEncoder {
     public static Bytes encodeIsSlashed(BigInteger validatorId) {
         return encodeFunctionCall("isSlashed", Arrays.asList(new Uint256(validatorId)));
     }
+
+    public static Bytes encodeDepTokenConstructor(Address holderA, Address holderB) {
+        String encoded = FunctionEncoder.encodeConstructor(
+            Arrays.asList(
+                toWeb3jAddress(holderA),
+                toWeb3jAddress(holderB)
+            )
+        );
+        return Bytes.fromHexString(encoded);
+    }
+
+    public static Bytes encodeDepTokenApprove(Address spender, BigInteger amount) {
+        return encodeFunctionCall("approve", Arrays.asList(
+            toWeb3jAddress(spender),
+            new Uint256(amount)
+        ));
+    }
+
+    public static Bytes encodeAMMConstructor(Address token0, Address token1) {
+        String encoded = FunctionEncoder.encodeConstructor(
+            Arrays.asList(
+                toWeb3jAddress(token0),
+                toWeb3jAddress(token1)
+            )
+        );
+        return Bytes.fromHexString(encoded);
+    }
+
+    public static Bytes encodeAddLiquidity(BigInteger amount0, BigInteger amount1) {
+        return encodeFunctionCall("addLiquidity", Arrays.asList(
+            new Uint256(amount0),
+            new Uint256(amount1)
+        ));
+    }
+
+    public static Bytes encodeRemoveLiquidity(BigInteger lpAmount) {
+        return encodeFunctionCall("removeLiquidity", Arrays.asList(new Uint256(lpAmount)));
+    }
+
+    public static Bytes encodeSwap(Address tokenIn, BigInteger amountIn, BigInteger minAmountOut) {
+        return encodeFunctionCall("swap", Arrays.asList(
+            toWeb3jAddress(tokenIn),
+            new Uint256(amountIn),
+            new Uint256(minAmountOut)
+        ));
+    }
+
+    public static Bytes encodeGetReserves() {
+        return encodeFunctionCall("getReserves", Collections.emptyList());
+    }
+
+    public static Bytes encodeGetLiquidityOf(Address provider) {
+        return encodeFunctionCall("getLiquidityOf", Arrays.asList(toWeb3jAddress(provider)));
+    }
 }
