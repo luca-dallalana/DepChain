@@ -70,6 +70,11 @@ public class Client implements DeliveryListener{
         System.out.println("  --- Oracle ---");
         System.out.println("  14 - Update Price");
         System.out.println("  15 - Get Price");
+        System.out.println("  --- Multisig ---");
+        System.out.println("  16 - Submit Transaction");
+        System.out.println("  17 - Confirm Transaction");
+        System.out.println("  18 - Execute Transaction");
+        System.out.println("  19 - Revoke Confirmation");
         System.out.println("===============================\n");
 
         Scanner scanner = new Scanner(System.in);
@@ -424,8 +429,90 @@ public class Client implements DeliveryListener{
                     }
                     break;
                 }
+                case "16": {
+                    Address submitSender = config.getAccountAddress(config.getID());
+                    System.out.println("Select token: 1=IST, 2=DEP");
+                    String tokenChoice = scanner.nextLine().trim();
+                    Address submitToken = "2".equals(tokenChoice)
+                        ? Address.fromHexString(Block.DEP_TOKEN_ADDRESS)
+                        : config.getISTCoinContractAddress();
+                    Address submitRecipient = readAddressForClient(scanner, "Enter recipient client ID: ");
+                    Long submitAmount = readLong(scanner, "Enter amount: ");
+                    Long submitGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long submitMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long submitMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes submitData = ABIEncoder.encodeSubmit(submitToken, submitRecipient, BigInteger.valueOf(submitAmount));
+                    Transaction submitTx = new Transaction(
+                        config.getPort(), submitSender,
+                        Address.fromHexString(Block.MULTISIG_ADDRESS), 0L,
+                        submitData.toArray(),
+                        submitGasLimit, submitMaxFee, submitMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(submitTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
+                case "17": {
+                    Address confirmSender = config.getAccountAddress(config.getID());
+                    Long confirmTxId = readLongAllowZero(scanner, "Enter transaction ID: ");
+                    Long confirmGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long confirmMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long confirmMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes confirmData = ABIEncoder.encodeConfirm(BigInteger.valueOf(confirmTxId));
+                    Transaction confirmTx = new Transaction(
+                        config.getPort(), confirmSender,
+                        Address.fromHexString(Block.MULTISIG_ADDRESS), 0L,
+                        confirmData.toArray(),
+                        confirmGasLimit, confirmMaxFee, confirmMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(confirmTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
+                case "18": {
+                    Address executeSender = config.getAccountAddress(config.getID());
+                    Long executeTxId = readLongAllowZero(scanner, "Enter transaction ID: ");
+                    Long executeGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long executeMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long executeMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes executeData = ABIEncoder.encodeExecute(BigInteger.valueOf(executeTxId));
+                    Transaction executeTx = new Transaction(
+                        config.getPort(), executeSender,
+                        Address.fromHexString(Block.MULTISIG_ADDRESS), 0L,
+                        executeData.toArray(),
+                        executeGasLimit, executeMaxFee, executeMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(executeTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
+                case "19": {
+                    Address revokeSender = config.getAccountAddress(config.getID());
+                    Long revokeTxId = readLongAllowZero(scanner, "Enter transaction ID: ");
+                    Long revokeGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long revokeMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long revokeMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes revokeData = ABIEncoder.encodeRevoke(BigInteger.valueOf(revokeTxId));
+                    Transaction revokeTx = new Transaction(
+                        config.getPort(), revokeSender,
+                        Address.fromHexString(Block.MULTISIG_ADDRESS), 0L,
+                        revokeData.toArray(),
+                        revokeGasLimit, revokeMaxFee, revokeMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(revokeTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
                 default:
-                    System.out.println("Unknown command. Try 0-6 for token operations, 7 (Exit), 8-13 for AMM operations, or 14-15 for Oracle.");
+                    System.out.println("Unknown command. Try 0-6 for tokens, 7 (Exit), 8-13 for AMM, 14-15 for Oracle, or 16-19 for Multisig.");
             }
         }
     }
