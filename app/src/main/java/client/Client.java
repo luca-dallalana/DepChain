@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 
+import blockchain.Block;
 import blockchain.GetAllowance;
 import blockchain.GetBalance;
 import blockchain.Transaction;
@@ -53,12 +54,19 @@ public class Client implements DeliveryListener{
         System.out.println("Commands:");
         System.out.println("  0 - DepCoin Transfer (native)");
         System.out.println("  1 - ISTCoin Transfer (contract)");
-        System.out.println("  2 - Set Allowance");
-        System.out.println("  3 - TransferFrom");
+        System.out.println("  2 - Set ISTCoin Allowance");
+        System.out.println("  3 - ISTCoin TransferFrom");
         System.out.println("  4 - Get DepCoin Balance");
         System.out.println("  5 - Get ISTCoin Balance");
-        System.out.println("  6 - Get Allowance");
+        System.out.println("  6 - Get ISTCoin Allowance");
         System.out.println("  7 - Exit");
+        System.out.println("  --- AMM ---");
+        System.out.println("  8  - Approve ISTCoin for AMM");
+        System.out.println("  9  - Approve DepToken for AMM");
+        System.out.println("  10 - Add Liquidity (IST + DEP)");
+        System.out.println("  11 - Remove Liquidity");
+        System.out.println("  12 - Swap IST -> DEP");
+        System.out.println("  13 - Swap DEP -> IST");
         System.out.println("===============================\n");
 
         Scanner scanner = new Scanner(System.in);
@@ -230,8 +238,143 @@ public class Client implements DeliveryListener{
                     }
                     ReadSequence++;
                     break;
+                case "8": {
+                    Address ammApproveISTSender = config.getAccountAddress(config.getID());
+                    Long ammApproveISTAmount = readLong(scanner, "Enter ISTCoin amount to approve for AMM: ");
+                    Long ammApproveISTGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long ammApproveISTMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long ammApproveISTMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes ammApproveISTData = ABIEncoder.encodeApprove(
+                        Address.fromHexString(Block.AMM_ADDRESS),
+                        BigInteger.valueOf(ammApproveISTAmount),
+                        BigInteger.ZERO
+                    );
+                    Transaction ammApproveISTTx = new Transaction(
+                        config.getPort(), ammApproveISTSender,
+                        config.getISTCoinContractAddress(), 0L,
+                        ammApproveISTData.toArray(),
+                        ammApproveISTGasLimit, ammApproveISTMaxFee, ammApproveISTMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(ammApproveISTTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
+                case "9": {
+                    Address ammApproveDepSender = config.getAccountAddress(config.getID());
+                    Long ammApproveDepAmount = readLong(scanner, "Enter DepToken amount to approve for AMM: ");
+                    Long ammApproveDepGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long ammApproveDepMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long ammApproveDepMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes ammApproveDepData = ABIEncoder.encodeDepTokenApprove(
+                        Address.fromHexString(Block.AMM_ADDRESS),
+                        BigInteger.valueOf(ammApproveDepAmount)
+                    );
+                    Transaction ammApproveDepTx = new Transaction(
+                        config.getPort(), ammApproveDepSender,
+                        Address.fromHexString(Block.DEP_TOKEN_ADDRESS), 0L,
+                        ammApproveDepData.toArray(),
+                        ammApproveDepGasLimit, ammApproveDepMaxFee, ammApproveDepMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(ammApproveDepTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
+                case "10": {
+                    Address addLiqSender = config.getAccountAddress(config.getID());
+                    Long addLiqAmount0 = readLong(scanner, "Enter IST amount to add: ");
+                    Long addLiqAmount1 = readLong(scanner, "Enter DEP amount to add: ");
+                    Long addLiqGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long addLiqMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long addLiqMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes addLiqData = ABIEncoder.encodeAddLiquidity(
+                        BigInteger.valueOf(addLiqAmount0),
+                        BigInteger.valueOf(addLiqAmount1)
+                    );
+                    Transaction addLiqTx = new Transaction(
+                        config.getPort(), addLiqSender,
+                        Address.fromHexString(Block.AMM_ADDRESS), 0L,
+                        addLiqData.toArray(),
+                        addLiqGasLimit, addLiqMaxFee, addLiqMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(addLiqTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
+                case "11": {
+                    Address removeLiqSender = config.getAccountAddress(config.getID());
+                    Long removeLiqAmount = readLong(scanner, "Enter LP token amount to burn: ");
+                    Long removeLiqGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long removeLiqMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long removeLiqMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes removeLiqData = ABIEncoder.encodeRemoveLiquidity(BigInteger.valueOf(removeLiqAmount));
+                    Transaction removeLiqTx = new Transaction(
+                        config.getPort(), removeLiqSender,
+                        Address.fromHexString(Block.AMM_ADDRESS), 0L,
+                        removeLiqData.toArray(),
+                        removeLiqGasLimit, removeLiqMaxFee, removeLiqMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(removeLiqTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
+                case "12": {
+                    Address swapISTSender = config.getAccountAddress(config.getID());
+                    Long swapISTAmountIn = readLong(scanner, "Enter IST amount to swap: ");
+                    Long swapISTMinOut = readLongAllowZero(scanner, "Enter minimum DEP out (0 to skip): ");
+                    Long swapISTGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long swapISTMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long swapISTMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes swapISTData = ABIEncoder.encodeSwap(
+                        Address.fromHexString(Block.IST_COIN_ADDRESS),
+                        BigInteger.valueOf(swapISTAmountIn),
+                        BigInteger.valueOf(swapISTMinOut)
+                    );
+                    Transaction swapISTTx = new Transaction(
+                        config.getPort(), swapISTSender,
+                        Address.fromHexString(Block.AMM_ADDRESS), 0L,
+                        swapISTData.toArray(),
+                        swapISTGasLimit, swapISTMaxFee, swapISTMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(swapISTTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
+                case "13": {
+                    Address swapDepSender = config.getAccountAddress(config.getID());
+                    Long swapDepAmountIn = readLong(scanner, "Enter DEP amount to swap: ");
+                    Long swapDepMinOut = readLongAllowZero(scanner, "Enter minimum IST out (0 to skip): ");
+                    Long swapDepGasLimit = readLong(scanner, "Enter gasLimit: ");
+                    Long swapDepMaxFee = readLong(scanner, "Enter maxFeePerGas: ");
+                    Long swapDepMaxPrioFee = readLongAllowZero(scanner, "Enter maxPriorityFeePerGas: ");
+                    Bytes swapDepData = ABIEncoder.encodeSwap(
+                        Address.fromHexString(Block.DEP_TOKEN_ADDRESS),
+                        BigInteger.valueOf(swapDepAmountIn),
+                        BigInteger.valueOf(swapDepMinOut)
+                    );
+                    Transaction swapDepTx = new Transaction(
+                        config.getPort(), swapDepSender,
+                        Address.fromHexString(Block.AMM_ADDRESS), 0L,
+                        swapDepData.toArray(),
+                        swapDepGasLimit, swapDepMaxFee, swapDepMaxPrioFee,
+                        transactionNonce++, null
+                    );
+                    try { sendTransaction(swapDepTx); } catch (Exception e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
+                    break;
+                }
                 default:
-                    System.out.println("Unknown command. Try 0 (DepCoin), 1 (IST transfer), 2 (Set Allowance), 3 (TransferFrom), 4 (Get DepCoin Balance), 5 (Get ISTCoin Balance), 6 (Get Allowance), or 7 (Exit)");
+                    System.out.println("Unknown command. Try 0-6 for token operations, 7 (Exit), or 8-13 for AMM operations.");
             }
         }
     }
