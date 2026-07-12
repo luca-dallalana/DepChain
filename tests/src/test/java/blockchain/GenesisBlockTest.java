@@ -39,10 +39,10 @@ public class GenesisBlockTest {
         assertTrue(genesis.isGenesisBlock(), "Should be identified as genesis block");
 
         // Verify transactions
-        assertEquals(2, genesis.transactions.size(), "Genesis should have 2 deployment transactions");
+        assertEquals(4, genesis.transactions.size(), "Genesis should have 4 deployment transactions");
 
-        // Verify state (admin + 2 clients + 2 contracts)
-        assertEquals(5, genesis.state.accounts.size(), "Genesis state should have 5 accounts");
+        // Verify state (admin + 2 clients + 4 contracts)
+        assertEquals(7, genesis.state.accounts.size(), "Genesis state should have 7 accounts");
 
         // Verify admin account exists (used for deploying contracts in genesis)
         Address adminAddress = Address.fromHexString(Block.ADMIN_ADDRESS);
