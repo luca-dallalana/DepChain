@@ -229,7 +229,7 @@ public class BlockchainMember {
         return storage;
     }
 
-    private static void initializeEVM(EVMHelper evm, WorldState state) {
+    public static void initializeEVM(EVMHelper evm, WorldState state) {
         for (Map.Entry<Address, Account> entry : state.accounts.entrySet()) {
             Address addr = entry.getKey();
             Account account = entry.getValue();
