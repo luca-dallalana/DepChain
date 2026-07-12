@@ -31,6 +31,7 @@ import network.DeliveryListener;
 import network.GsonUtils;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
+import rpc.JsonRpcServer;
 import util.DepChainUtil;
 import util.DepChainUtil.MaxQCInfo;
 import org.hyperledger.besu.datatypes.Address;
@@ -352,6 +353,16 @@ public class DepChainMember implements DeliveryListener{
 
         this.receiver = new UdpReceiver(socket, networkLayerLib);
         new Thread(receiver).start();
+
+        try {
+            JsonRpcServer rpcServer = new JsonRpcServer(8545, this::getLastExecutedBlock,
+                memberConfig::addPendingTransaction, blockStore::getBlockByHash);
+            rpcServer.start();
+            System.out.println("JSON-RPC server started on port 8545");
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to start JSON-RPC server", e);
+        }
+
         startTimeout();
     }
 
