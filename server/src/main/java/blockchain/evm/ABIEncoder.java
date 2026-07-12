@@ -236,4 +236,13 @@ public class ABIEncoder {
             toWeb3jAddress(owner)
         ));
     }
+
+    public static Bytes encodeVerifyProof(byte[] proof, List<BigInteger> instances) {
+        return encodeFunctionCall("verifyProof", Arrays.asList(
+            new DynamicBytes(proof),
+            new DynamicArray<>(Uint256.class, instances.stream()
+                .map(Uint256::new)
+                .collect(Collectors.toList()))
+        ));
+    }
 }
