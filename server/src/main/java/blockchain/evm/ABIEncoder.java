@@ -188,4 +188,52 @@ public class ABIEncoder {
     public static Bytes encodeIsReporter(Address account) {
         return encodeFunctionCall("isReporter", Arrays.asList(toWeb3jAddress(account)));
     }
+
+    public static Bytes encodeMultisigConstructor(List<Address> owners, BigInteger threshold) {
+        List<org.web3j.abi.datatypes.Address> web3jOwners = owners.stream()
+            .map(ABIEncoder::toWeb3jAddress)
+            .collect(Collectors.toList());
+        String encoded = FunctionEncoder.encodeConstructor(
+            Arrays.asList(
+                new DynamicArray<>(org.web3j.abi.datatypes.Address.class, web3jOwners),
+                new Uint256(threshold)
+            )
+        );
+        return Bytes.fromHexString(encoded);
+    }
+
+    public static Bytes encodeSubmit(Address token, Address to, BigInteger amount) {
+        return encodeFunctionCall("submit", Arrays.asList(
+            toWeb3jAddress(token),
+            toWeb3jAddress(to),
+            new Uint256(amount)
+        ));
+    }
+
+    public static Bytes encodeConfirm(BigInteger txId) {
+        return encodeFunctionCall("confirm", Arrays.asList(new Uint256(txId)));
+    }
+
+    public static Bytes encodeRevoke(BigInteger txId) {
+        return encodeFunctionCall("revoke", Arrays.asList(new Uint256(txId)));
+    }
+
+    public static Bytes encodeExecute(BigInteger txId) {
+        return encodeFunctionCall("execute", Arrays.asList(new Uint256(txId)));
+    }
+
+    public static Bytes encodeGetTransaction(BigInteger txId) {
+        return encodeFunctionCall("getTransaction", Arrays.asList(new Uint256(txId)));
+    }
+
+    public static Bytes encodeGetTransactionCount() {
+        return encodeFunctionCall("getTransactionCount", Collections.emptyList());
+    }
+
+    public static Bytes encodeIsConfirmedBy(BigInteger txId, Address owner) {
+        return encodeFunctionCall("isConfirmedBy", Arrays.asList(
+            new Uint256(txId),
+            toWeb3jAddress(owner)
+        ));
+    }
 }

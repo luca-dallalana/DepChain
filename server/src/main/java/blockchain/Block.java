@@ -32,6 +32,7 @@ public class Block {
     public static final String SLASHING_CONTRACT_ADDRESS = "0x7777777777777777777777777777777777777777";
     public static final String AMM_ADDRESS = "0x8888888888888888888888888888888888888888";
     public static final String ORACLE_ADDRESS = "0x9999999999999999999999999999999999999999";
+    public static final String MULTISIG_ADDRESS = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     public static final String ADMIN_ADDRESS = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     public String blockHash;
@@ -141,6 +142,7 @@ public class Block {
             String depTokenBytecode = BytecodeLoader.loadBytecode("DepToken");
             String ammBytecode = BytecodeLoader.loadBytecode("AMM");
             String oracleBytecode = BytecodeLoader.loadBytecode("PriceOracle");
+            String multisigBytecode = BytecodeLoader.loadBytecode("Multisig");
 
             // 4. Deploy ISTCoin contract manually (genesis-only setup, admin deploys)
             Address istAddress = Address.fromHexString(IST_COIN_ADDRESS);
@@ -218,6 +220,25 @@ public class Block {
                 throw new RuntimeException("Failed to deploy PriceOracle contract");
             }
 
+            // Deploy Multisig with client0 and client1 as owners, threshold 2
+            Address multisigContractAddress = Address.fromHexString(MULTISIG_ADDRESS);
+            Bytes multisigConstructorParams = ABIEncoder.encodeMultisigConstructor(
+                java.util.Arrays.asList(client0HexAddress, client1HexAddress),
+                java.math.BigInteger.valueOf(2)
+            );
+            Bytes multisigDeploymentCode = Bytes.concatenate(
+                Bytes.fromHexString(multisigBytecode),
+                multisigConstructorParams
+            );
+            boolean multisigDeployed = evm.deployContract(
+                adminAddress,
+                multisigContractAddress,
+                multisigDeploymentCode
+            );
+            if (!multisigDeployed) {
+                throw new RuntimeException("Failed to deploy Multisig contract");
+            }
+
             // 5. Create deployment transactions (for record-keeping in genesis block)
             List<Transaction> transactions = new ArrayList<>();
             transactions.add(new Transaction(
@@ -240,6 +261,10 @@ public class Block {
                 -1, adminAddress, null, 0, oracleDeploymentCode.toArray(),
                 10000000, 0, 0, 0, null
             ));
+            transactions.add(new Transaction(
+                -1, adminAddress, null, 0, multisigDeploymentCode.toArray(),
+                10000000, 0, 0, 0, null
+            ));
 
             // 6. Extract final state from EVM after manual deployments
             WorldState finalState = new WorldState();
@@ -251,7 +276,8 @@ public class Block {
                 SLASHING_CONTRACT_ADDRESS,
                 DEP_TOKEN_ADDRESS,
                 AMM_ADDRESS,
-                ORACLE_ADDRESS
+                ORACLE_ADDRESS,
+                MULTISIG_ADDRESS
             ));
 
             for (String addrStr : trackedAddresses) {
@@ -279,6 +305,7 @@ public class Block {
             System.out.println("DepToken deployed at: " + DEP_TOKEN_ADDRESS);
             System.out.println("AMM deployed at: " + AMM_ADDRESS);
             System.out.println("PriceOracle deployed at: " + ORACLE_ADDRESS);
+            System.out.println("Multisig deployed at: " + MULTISIG_ADDRESS);
             System.out.println("Genesis state contains " + finalState.accounts.size() + " accounts");
 
             // 7. Create genesis block (without hash initially)
