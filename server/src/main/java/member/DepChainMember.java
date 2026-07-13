@@ -31,6 +31,7 @@ import network.DeliveryListener;
 import network.GsonUtils;
 import network.NetworkLayerLib;
 import network.UdpReceiver;
+import metrics.MetricsServer;
 import rpc.JsonRpcServer;
 import util.DepChainUtil;
 import util.DepChainUtil.MaxQCInfo;
@@ -61,6 +62,7 @@ public class DepChainMember implements DeliveryListener{
     private final EquivocationDetector equivocationDetector;
     private final List<Transaction> pendingSlashTxs;
     private int byzantineAtView = -1;
+    private MetricsServer metricsServer;
 
     public DepChainMember(MemberConfig memberConfig, DatagramSocket socket) {
         this.memberConfig = memberConfig;
@@ -259,7 +261,8 @@ public class DepChainMember implements DeliveryListener{
 
 
             memberConfig.addPendingTransaction(request);
-            return; 
+            metricsServer.setPendingTransactions(memberConfig.getPendingTransactions().size());
+            return;
         }
 
         if (payload.startsWith("CATCH-UP=")) {
@@ -361,6 +364,14 @@ public class DepChainMember implements DeliveryListener{
             System.out.println("JSON-RPC server started on port 8545");
         } catch (IOException e) {
             throw new RuntimeException("Failed to start JSON-RPC server", e);
+        }
+
+        try {
+            metricsServer = new MetricsServer(9090);
+            metricsServer.start();
+            System.out.println("Metrics server started on port 9090");
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to start metrics server", e);
         }
 
         startTimeout();
@@ -682,6 +693,8 @@ public class DepChainMember implements DeliveryListener{
             broadcast(decideMsg);
             Block block = blockStore.getBlockByHash(commitQC.blockHash);
             this.lastExecutedBlock = BlockchainMember.executeBlock(block, blockStore, lastExecutedBlock);
+            metricsServer.setBlockHeight(this.lastExecutedBlock.blockNumber);
+            metricsServer.incBlocks(block.transactions.size(), block.totalGasUsed);
 
             for (Transaction tx : block.transactions) {
                 sendTransactionResponse(tx);
@@ -724,6 +737,8 @@ public class DepChainMember implements DeliveryListener{
         startTimeout();
         Block block = blockStore.getBlockByHash(m.justify.blockHash);
         this.lastExecutedBlock = BlockchainMember.executeBlock(block, blockStore, lastExecutedBlock);
+        metricsServer.setBlockHeight(this.lastExecutedBlock.blockNumber);
+        metricsServer.incBlocks(block.transactions.size(), block.totalGasUsed);
 
         for (Transaction tx : block.transactions) {
             sendTransactionResponse(tx);
