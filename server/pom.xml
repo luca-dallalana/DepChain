@@ -60,6 +60,17 @@
             <artifactId>abi</artifactId>
             <version>5.0.2</version>
         </dependency>
+        <!-- Prometheus metrics -->
+        <dependency>
+            <groupId>io.prometheus</groupId>
+            <artifactId>simpleclient</artifactId>
+            <version>0.16.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.prometheus</groupId>
+            <artifactId>simpleclient_httpserver</artifactId>
+            <version>0.16.0</version>
+        </dependency>
         <!-- SLF4J (required by Besu) -->
         <dependency>
             <groupId>org.slf4j</groupId>
