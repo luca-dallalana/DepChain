@@ -75,11 +75,23 @@ public class MemberConfig {
         return ID;
     }
 
-    // Static factory for creating a default 4-replica configuration (f=1)
     private void fillReplicasInfo() {
-        for (int i = 0; i < N ; i++) {
-            if (i != ID) {
-                replicas.put(i, new ReplicaInfo(i, "localhost", 3000 + i, null));
+        String peers = System.getenv("DEPCHAIN_PEERS");
+        if (peers != null && !peers.isEmpty()) {
+            for (String entry : peers.split(",")) {
+                String[] parts = entry.split(":");
+                int id = Integer.parseInt(parts[0]);
+                String host = parts[1];
+                int port = Integer.parseInt(parts[2]);
+                if (id != ID) {
+                    replicas.put(id, new ReplicaInfo(id, host, port, null));
+                }
+            }
+        } else {
+            for (int i = 0; i < N; i++) {
+                if (i != ID) {
+                    replicas.put(i, new ReplicaInfo(i, "localhost", 3000 + i, null));
+                }
             }
         }
     }
